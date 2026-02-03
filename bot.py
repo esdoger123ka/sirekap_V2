@@ -413,10 +413,15 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["telegram_user_id"] = update.effective_user.id if update.effective_user else ""
 
         await q.edit_message_text(
-            f"✅ Dipilih:\nSegment: {segment}\nJenis Order: {jenis_order}\n\n"
-            "Sekarang isi data satu per satu.\n"
-            "Ketik /cancel untuk membatalkan."
-        )
+    f"✅ Dipilih:\n"
+    f"Segment: {segment}\n"
+    f"Jenis Order: {jenis_order}\n\n"
+    "Sekarang kita mulai input data.\n"
+    "**Pertama, isi SERVICE NO.**\n\n"
+    "Ketik /cancel untuk membatalkan.",
+    parse_mode="Markdown"
+)
+
 
         await ask_next_question(q.message.chat_id, context, context.bot)
         return
@@ -498,4 +503,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
