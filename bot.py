@@ -194,8 +194,10 @@ def clear_form(context: ContextTypes.DEFAULT_TYPE):
         "form_step",
         "form_answers",
         "form_page",
+        "pending_payload",   # ⬅️ INI YANG DITAMBAHKAN
     ]:
         context.user_data.pop(k, None)
+
 
 
 def start_form(context: ContextTypes.DEFAULT_TYPE, segment: str, jenis_order: str, page: int):
@@ -238,8 +240,13 @@ def orders_keyboard(segment: str, page: int):
     return InlineKeyboardMarkup(rows)
 
 
-def cancel_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("❌ Batalkan input", callback_data="CANCEL_FORM")]])
+def confirm_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ SIMPAN", callback_data="CONFIRM_SAVE"),
+            InlineKeyboardButton("❌ BATAL", callback_data="CONFIRM_CANCEL"),
+        ]
+    ])
 
 
 # ===================== BOT FLOW =====================
@@ -262,6 +269,7 @@ async def ask_next_question(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bo
 
 
 async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
+
     segment = context.user_data["form_segment"]
     jenis_order = context.user_data["form_order"]
     ans = context.user_data["form_answers"]
@@ -270,7 +278,6 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
     tiket_no = (ans.get("tiket_no") or "").strip()
     order_no = (ans.get("order_no") or "").strip()
 
-    # Normalisasi input '-' jadi kosong
     if tiket_no == "-":
         tiket_no = ""
     if order_no == "-":
@@ -291,8 +298,11 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         "workzone": ans.get("workzone", "").strip(),
     }
 
+    # ⬅️ SIMPAN SEMENTARA (BELUM KIRIM KE SHEET)
+    context.user_data["pending_payload"] = payload
+
     summary = (
-        "✅ **Data diterima**\n\n"
+        "📋 **MOHON KONFIRMASI DATA**\n\n"
         f"**Segment:** {segment}\n"
         f"**Jenis Order:** {jenis_order}\n\n"
         f"service no: {payload['service_no']}\n"
@@ -302,23 +312,16 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         f"labor code teknisi 2: {payload['labor_code_teknisi_2']}\n"
         f"tanggal jam start: {payload['start_dt']}\n"
         f"tanggal jam close: {payload['close_dt']}\n"
-        f"workzone: {payload['workzone']}\n"
+        f"workzone: {payload['workzone']}\n\n"
+        "Apakah data ini sudah benar?"
     )
 
-    await bot.send_message(chat_id=chat_id, text=summary, parse_mode="Markdown")
-
-    # Kirim ke Google Sheets
-    try:
-        r = requests.post(GS_WEBAPP_URL, json=payload, timeout=15)
-        if r.status_code == 200:
-            await bot.send_message(chat_id=chat_id, text="✅ Data berhasil disimpan ke Google Sheet.")
-        else:
-            await bot.send_message(chat_id=chat_id, text=f"⚠️ Gagal simpan ke Google Sheet (HTTP {r.status_code}).")
-    except Exception as e:
-        await bot.send_message(chat_id=chat_id, text=f"⚠️ Gagal kirim ke Google Sheet: {e}")
-
-    clear_form(context)
-    await bot.send_message(chat_id=chat_id, text="Ketik /menu untuk input data baru.")
+    await bot.send_message(
+        chat_id=chat_id,
+        text=summary,
+        reply_markup=confirm_keyboard(),
+        parse_mode="Markdown",
+    )
 
 
 # ===================== COMMANDS =====================
@@ -346,7 +349,32 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
+    
+    # ===== Konfirmasi sebelum simpan =====
+    if q.data == "CONFIRM_SAVE":
+        payload = context.user_data.get("pending_payload")
+        if not payload:
+            await q.edit_message_text("⚠️ Data tidak ditemukan. Ketik /menu untuk ulang.")
+            return
 
+        try:
+            r = requests.post(GS_WEBAPP_URL, json=payload, timeout=15)
+            if r.status_code == 200:
+                await q.edit_message_text("✅ Data BERHASIL disimpan ke Google Sheet.")
+            else:
+                await q.edit_message_text(f"⚠️ Gagal simpan ke Google Sheet (HTTP {r.status_code}).")
+        except Exception as e:
+            await q.edit_message_text(f"⚠️ Error kirim data: {e}")
+
+        context.user_data.pop("pending_payload", None)
+        clear_form(context)
+        return
+
+    if q.data == "CONFIRM_CANCEL":
+        context.user_data.pop("pending_payload", None)
+        clear_form(context)
+        await q.edit_message_text("❌ Input dibatalkan. Ketik /menu untuk mulai ulang.")
+        return
     if q.data == "CANCEL_FORM":
         clear_form(context)
         await q.edit_message_text("✅ Input dibatalkan. Ketik /menu untuk mulai lagi.")
@@ -470,3 +498,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
