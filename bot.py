@@ -350,30 +350,44 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Tidak ada input aktif. Ketik /menu untuk mulai.")
 
 
-# ===================== BUTTON HANDLER =====================
-async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    
-    # ===== Konfirmasi sebelum simpan =====
-    if q.data == "CONFIRM_SAVE":
-        payload = context.user_data.get("pending_payload")
-        if not payload:
-            await q.edit_message_text("⚠️ Data tidak ditemukan. Ketik /menu untuk ulang.")
-            return
-
-        try:
-            r = requests.post(GS_WEBAPP_URL, json=payload, timeout=15)
-            if r.status_code == 200:
-                await q.edit_message_text("✅ Data BERHASIL disimpan ke Google Sheet.")
-            else:
-                await q.edit_message_text(f"⚠️ Gagal simpan ke Google Sheet (HTTP {r.status_code}).")
-        except Exception as e:
-            await q.edit_message_text(f"⚠️ Error kirim data: {e}")
-
-        context.user_data.pop("pending_payload", None)
-        clear_form(context)
+# ===== Konfirmasi sebelum simpan =====
+if q.data == "CONFIRM_SAVE":
+    payload = context.user_data.get("pending_payload")
+    if not payload:
+        await q.edit_message_text("⚠️ Data tidak ditemukan. Ketik /menu untuk ulang.")
         return
+
+    try:
+        r = requests.post(GS_WEBAPP_URL, json=payload, timeout=15)
+
+        if r.status_code == 200:
+            # ===== RINGKASAN SETELAH BERHASIL =====
+            recap = (
+                "✅ **Data BERHASIL disimpan ke Google Sheet.**\n\n"
+                "📌 **Ringkasan data:**\n"
+                f"- Segment: {payload.get('segment','')}\n"
+                f"- Jenis Order: {payload.get('jenis_order','')}\n"
+                f"- Service No: {payload.get('service_no','')}\n"
+                f"- Tiket No: {(payload.get('tiket_no') or '-')} \n"
+                f"- Order No: {(payload.get('order_no') or '-')} \n"
+                f"- Labor 1: {payload.get('labor_code_teknisi_1','')}\n"
+                f"- Labor 2: {(payload.get('labor_code_teknisi_2') or '-')} \n"
+                f"- Start: {payload.get('start_dt','')}\n"
+                f"- Close: {payload.get('close_dt','')}\n"
+                f"- Workzone: {payload.get('workzone','')}\n\n"
+                "Ketik /menu untuk input data baru."
+            )
+            await q.edit_message_text(recap, parse_mode="Markdown")
+
+        else:
+            await q.edit_message_text(f"⚠️ Gagal simpan ke Google Sheet (HTTP {r.status_code}).")
+
+    except Exception as e:
+        await q.edit_message_text(f"⚠️ Error kirim data: {e}")
+
+    context.user_data.pop("pending_payload", None)
+    clear_form(context)
+    return
 
     if q.data == "CONFIRM_CANCEL":
         context.user_data.pop("pending_payload", None)
@@ -508,6 +522,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
