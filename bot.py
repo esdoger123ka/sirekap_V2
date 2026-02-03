@@ -249,6 +249,11 @@ def confirm_keyboard():
     ])
 
 
+def cancel_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ Batalkan input", callback_data="CANCEL_FORM")]
+    ])
+
 # ===================== BOT FLOW =====================
 async def ask_next_question(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
     step = context.user_data["form_step"]
@@ -503,5 +508,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
