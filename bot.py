@@ -155,19 +155,39 @@ PROVISIONING_SEGMENTS = {"Provisioning B2B", "Provisioning B2B Eksternal", "Prov
 def tiket_optional(jenis_order: str) -> bool:
     s = (jenis_order or "").lower()
     return ("tangible" in s) or ("ixsa" in s) or ("unspec" in s)
+    
+ORDERS_WITH_DATEK_ODP = {
+    # Provisioning B2C
+    "PSB Indihome",
+    "PDA",
+    "Survey PT2",
+    "Progress PT2",
 
+    # Provisioning B2B
+    "PSB DATIN",
+    "PSB INDIBIZ",
+    "PSB OLO",
+    "PSB WIFI",
+}
 
-def fields_for_segment(segment: str):
+def fields_for_segment(segment: str, jenis_order: str):
     if segment in ASSURANCE_SEGMENTS:
-        return ["service_no", "tiket_no", "labor1", "labor2", "start_dt", "close_dt", "workzone"]
+        fields = ["service_no", "tiket_no"]
     else:
-        return ["service_no", "order_no", "labor1", "labor2", "start_dt", "close_dt", "workzone"]
+        fields = ["service_no", "order_no"]
 
+    # ⬅️ Tambahan khusus
+    if jenis_order in ORDERS_WITH_DATEK_ODP:
+        fields.append("datek_odp")
+
+    fields += ["labor1", "labor2", "start_dt", "close_dt", "workzone"]
+    return fields
 
 PROMPTS = {
     "service_no": "Isi **service no**:",
     "tiket_no": "Isi **tiket no** (kalau tidak ada untuk Tangible/IXSA/Unspec, ketik `-`):",
     "order_no": "Isi **order no**:",
+    "datek_odp": "Isi **datek ODP**;".
     "labor1": "Isi **labor code teknisi 1**:",
     "labor2": "Isi **labor code teknisi 2** (kalau tidak ada, ketik `-`):",
     "start_dt": "Isi **tanggal jam start** format `DD/MM/YYYY HH:MM` (contoh: `03/02/2026 08:30`):",
@@ -206,7 +226,7 @@ def start_form(context: ContextTypes.DEFAULT_TYPE, segment: str, jenis_order: st
     context.user_data["form_active"] = True
     context.user_data["form_segment"] = segment
     context.user_data["form_order"] = jenis_order
-    context.user_data["form_fields"] = fields_for_segment(segment)
+    context.user_data["form_fields"] = fields_for_segment(segment, jenis_order)
     context.user_data["form_step"] = 0
     context.user_data["form_answers"] = {}
     context.user_data["form_page"] = page
@@ -298,6 +318,7 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         "service_no": ans.get("service_no", "").strip(),
         "tiket_no": tiket_no,
         "order_no": order_no,
+        "datek_odp": ans.get("datek_odp", "").strip(),
         "labor_code_teknisi_1": ans.get("labor1", "").strip(),
         "labor_code_teknisi_2": ans.get("labor2", "").strip(),
         "start_dt": ans.get("start_dt", "").strip(),
@@ -315,6 +336,7 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         f"service no: {payload['service_no']}\n"
         f"tiket no: {payload['tiket_no']}\n"
         f"order no: {payload['order_no']}\n"
+        f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
         f"labor code teknisi 1: {payload['labor_code_teknisi_1']}\n"
         f"labor code teknisi 2: {payload['labor_code_teknisi_2']}\n"
         f"tanggal jam start: {payload['start_dt']}\n"
@@ -528,6 +550,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
