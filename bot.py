@@ -187,7 +187,7 @@ PROMPTS = {
     "service_no": "Isi **service no**:",
     "tiket_no": "Isi **tiket no** (kalau tidak ada untuk Tangible/IXSA/Unspec, ketik `-`):",
     "order_no": "Isi **order no**:",
-    "datek_odp": "Isi **datek ODP**;".
+    "datek_odp": "Isi **datek ODP**;",
     "labor1": "Isi **labor code teknisi 1**:",
     "labor2": "Isi **labor code teknisi 2** (kalau tidak ada, ketik `-`):",
     "start_dt": "Isi **tanggal jam start** format `DD/MM/YYYY HH:MM` (contoh: `03/02/2026 08:30`):",
@@ -550,6 +550,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
