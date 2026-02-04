@@ -138,6 +138,8 @@ SEGMENT_ORDERS = {
         "PDA",
         "PSB Indihome",
         "REPLACEMENT ONT Premium/Dual Band",
+        "Survey PT2",
+        "Progress PT2",
         "REPLACEMENT STB",
         "Tiket FFG Indihome",
     ],
@@ -526,6 +528,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
