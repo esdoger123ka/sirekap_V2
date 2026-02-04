@@ -150,6 +150,105 @@ SEGMENTS = list(SEGMENT_ORDERS.keys())
 ASSURANCE_SEGMENTS = {"Assurance B2B Internal", "Assurance B2B Eksternal", "Assurance B2C"}
 PROVISIONING_SEGMENTS = {"Provisioning B2B", "Provisioning B2B Eksternal", "Provisioning B2C"}
 
+TECH_UNITS = {
+    "Assurance B2C": [
+        {"name": "MAKARIUS SUMIARSO", "labor": "74130340"},
+        {"name": "LUTHFI FATURAHMAN", "labor": "94150197"},
+        {"name": "SEPTIAN MAULUDIN", "labor": "92150306"},
+        {"name": "GISA TAKWA MARCEL", "labor": "20971385"},
+        {"name": "MUCHAMAD RIDWAN", "labor": "94159890"},
+        {"name": "YOGI SETIAWAN", "labor": "89170014"},
+        {"name": "NUGROHO EDI SUSANTO", "labor": "87155938"},
+        {"name": "BENY SOMANTRI", "labor": "20740013"},
+        {"name": "FIRMAN FUJI KHOMIRUN", "labor": "POJ3BDB2_016"},
+        {"name": "ARIFIN SURIFIN", "labor": "18720002"},
+        {"name": "AHMAD RANGGA MUZAKKI", "labor": "21000004"},
+        {"name": "IQBAL FAUZI", "labor": "99170252"},
+        {"name": "ENJANG ABDUL HAMID", "labor": "80152394"},
+        {"name": "RENDY JUNTARA", "labor": "93150362"},
+        {"name": "YUDHA AFRIZAL", "labor": "18940455"},
+        {"name": "AJI WAHYU APRIADI", "labor": "94150205"},
+        {"name": "RIZA ABURIZAL FAUZI", "labor": "20950971"},
+        {"name": "AHMAD GHANDI SYUKRUDIN", "labor": "90160119"},
+        {"name": "SANDI RAHMADI", "labor": "95160280"},
+        {"name": "HENDRA SETIAWAN", "labor": "18840043"},
+        {"name": "DIKI SODIKIN", "labor": "18980373"},
+        {"name": "TRI DIAN", "labor": "84151814"},
+        {"name": "DWI PUTRA YULIANTO", "labor": "21010001"},
+        {"name": "CECEP ENDI KURNIA", "labor": "97150195"},
+        {"name": "MUHAMAD FEBRY INDRA", "labor": "99170282"},
+        {"name": "ALDY ARDIANSYAH", "labor": "95155941"},
+        {"name": "SETIO PRAMONO", "labor": "18840003"},
+        {"name": "HENDRA SURYANA", "labor": "18780003"},
+    ],
+
+    "Provisioning B2C": [
+        {"name": "ADJI FIRMANSYAH", "labor": "18990315"},
+        {"name": "AGUNG HARDIYANTO", "labor": "18980502"},
+        {"name": "AHMAD RIZAL", "labor": "98170695"},
+        {"name": "AHMAD ZATNIKA", "labor": "21940017"},
+        {"name": "ALDI ALFAUZI", "labor": "22990054"},
+        {"name": "ALVINO MAULANA PUTRA", "labor": "97156163"},
+        {"name": "ARIF BUDIMAN", "labor": "18970322"},
+        {"name": "ARVAN MAULANA", "labor": "22000240"},
+        {"name": "BILLY ZULFIKAR", "labor": "20950686"},
+        {"name": "CAHYO JALU PRASETOYO", "labor": "20970046"},
+        {"name": "EDO RAMDANI", "labor": "25000028"},
+        {"name": "FIRMAN MAULANA YUSUF", "labor": "19980260"},
+        {"name": "GALIH PRIANDANI", "labor": "25910063"},
+        {"name": "GANDI GALIH", "labor": "20800025"},
+        {"name": "HANIF FARHAN MUTAQIN", "labor": "20880157"},
+        {"name": "HENDRA GUNAWAN", "labor": "18940040"},
+        {"name": "HENDRIAWAN", "labor": "20960831"},
+        {"name": "MUHAMMAD ANGGA N", "labor": "20970053"},
+        {"name": "MUHAMMAD SYAMSUL BAHRI", "labor": "21970031"},
+        {"name": "NOVA MUCHLIS", "labor": "18870084"},
+        {"name": "PUJI SANTOSO", "labor": "18820045"},
+        {"name": "RENGGI NUGRAHA", "labor": "20940711"},
+        {"name": "RIFKY FAJAR F", "labor": "25970117"},
+        {"name": "RISMAN FAUZI", "labor": "18940108"},
+        {"name": "RIZKY GUNAWAN", "labor": "20950982"},
+        {"name": "SHANDIKA DWI PUTRA", "labor": "25060099"},
+        {"name": "TAUFIK ISMAIL", "labor": "18980367"},
+        {"name": "VERDIAN A", "labor": "21000006"},
+        {"name": "MOH WILDAN FIRDAUS", "labor": "18980509"},
+        {"name": "WISNU HIDAYAT", "labor": "20971476"},
+        {"name": "YOGI SEPTIANDI", "labor": "19910031"},
+        {"name": "NUR FUAD S", "labor": "18990319"},
+        {"name": "NURDIANA SOPIAN SAHURI", "labor": "20961181"},
+    ],
+
+    "Assurance B2B": [
+        {"name": "YUSUF SAFARI", "labor": "20971337"},
+        {"name": "IKHSAN QOYUM", "labor": "18950127"},
+        {"name": "FAJAR GUSTIAN", "labor": "18940109"},
+        {"name": "BAYU MAHARDIKA", "labor": "92150121"},
+        {"name": "TIA SUTIANA", "labor": "20880008"},
+        {"name": "AGENG HAVID H", "labor": "18910274"},
+        {"name": "AGUNG APRIANSYAH", "labor": "18960565"},
+        {"name": "MUHAMMAD RAMDANI", "labor": "99170353"},
+        {"name": "ATH-THARIQ B", "labor": "18990148"},
+        {"name": "FREDY RUSDIANA", "labor": "22810002"},
+        {"name": "RIDWAN HERDIANA", "labor": "19950028"},
+        {"name": "DANI ALFIAN", "labor": "99170347"},
+        {"name": "AZIZ FAUZIAN", "labor": "19980255"},
+        {"name": "MOCH TAUFIK", "labor": "18910276"},
+    ],
+
+    "Provisioning B2B": [
+        {"name": "FIKRI FS", "labor": "18990137"},
+        {"name": "SAHRUL DARMAWAN", "labor": "19950053"},
+        {"name": "SURYADI LESAMA", "labor": "18880014"},
+        {"name": "FAISAL NUR AZIZ", "labor": "20940687"},
+    ],
+
+    "Maintenance & External": [
+        {"name": "SUDRAJAT", "labor": "18740021"},
+        {"name": "YANTO HERYANTO", "labor": "19810003"},
+        {"name": "DUDUNG ALAMSYAH", "labor": "18960355"},
+    ],
+}
+
 
 # ===================== FORM RULES =====================
 def tiket_optional(jenis_order: str) -> bool:
@@ -187,7 +286,7 @@ PROMPTS = {
     "service_no": "Isi **service no**:",
     "tiket_no": "Isi **tiket no** (kalau tidak ada untuk Tangible/IXSA/Unspec, ketik `-`):",
     "order_no": "Isi **order no**:",
-    "datek_odp": "Isi **datek ODP**;",
+    "datek_odp": "Isi **datek ODP**:",
     "labor1": "Isi **labor code teknisi 1**:",
     "labor2": "Isi **labor code teknisi 2** (kalau tidak ada, ketik `-`):",
     "start_dt": "Isi **tanggal jam start** format `DD/MM/YYYY HH:MM` (contoh: `03/02/2026 08:30`):",
@@ -236,6 +335,37 @@ def start_form(context: ContextTypes.DEFAULT_TYPE, segment: str, jenis_order: st
 def segment_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton(seg, callback_data=f"SEG|{seg}|0")] for seg in SEGMENTS])
 
+def tech_unit_keyboard(target_field: str, segment: str, allow_none=False):
+    allowed_units = []
+
+    if "Assurance B2C" in segment:
+        allowed_units = ["Assurance B2C"]
+    elif "Provisioning B2C" in segment:
+        allowed_units = ["Provisioning B2C"]
+    elif "Assurance B2B" in segment:
+        allowed_units = ["Assurance B2B"]
+    elif "Provisioning B2B" in segment:
+        allowed_units = ["Provisioning B2B"]
+    else:
+        allowed_units = ["Maintenance & External"]
+
+    rows = [
+        [InlineKeyboardButton(unit, callback_data=f"TECH_UNIT|{unit}|{target_field}")]
+        for unit in allowed_units
+    ]
+
+    if allow_none:
+        rows.append([InlineKeyboardButton("➖ Tidak ada teknisi 2", callback_data=f"TECH_NONE|{target_field}")])
+
+    return InlineKeyboardMarkup(rows)
+
+def tech_list_keyboard(unit: str, target_field: str):
+    rows = []
+    for i, t in enumerate(TECH_UNITS.get(unit, [])):
+        label = f"{t['name']} — {t['labor']}"
+        rows.append([InlineKeyboardButton(label, callback_data=f"TECH_PICK|{unit}|{i}|{target_field}")])
+    rows.append([InlineKeyboardButton("⬅️ Kembali", callback_data=f"TECH_BACK|{target_field}")])
+    return InlineKeyboardMarkup(rows)
 
 def orders_keyboard(segment: str, page: int):
     orders = SEGMENT_ORDERS.get(segment, [])
@@ -286,6 +416,32 @@ async def ask_next_question(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bo
         return
 
     field = fields[step]
+
+if field == "labor1":
+    await bot.send_message(
+        chat_id=chat_id,
+        text="Pilih **Unit Teknisi (Teknisi 1)**:",
+        reply_markup=tech_unit_keyboard(
+            "labor1",
+            context.user_data["form_segment"]
+        ),
+        parse_mode="Markdown",
+    )
+    return
+
+if field == "labor2":
+    await bot.send_message(
+        chat_id=chat_id,
+        text="Pilih **Unit Teknisi (Teknisi 2)**:",
+        reply_markup=tech_unit_keyboard(
+            "labor2",
+            context.user_data["form_segment"],
+            allow_none=True
+        ),
+        parse_mode="Markdown",
+    )
+    return
+    
     prompt = PROMPTS[field]
     await bot.send_message(
         chat_id=chat_id,
@@ -321,6 +477,8 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         "datek_odp": ans.get("datek_odp", "").strip(),
         "labor_code_teknisi_1": ans.get("labor1", "").strip(),
         "labor_code_teknisi_2": ans.get("labor2", "").strip(),
+        "nama_teknisi_1": ans.get("labor1_name", "").strip(),
+        "nama_teknisi_2": ans.get("labor2_name", "").strip(),
         "start_dt": ans.get("start_dt", "").strip(),
         "close_dt": ans.get("close_dt", "").strip(),
         "workzone": ans.get("workzone", "").strip(),
@@ -329,21 +487,21 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
     # ⬅️ SIMPAN SEMENTARA (BELUM KIRIM KE SHEET)
     context.user_data["pending_payload"] = payload
 
-    summary = (
-        "📋 **MOHON KONFIRMASI DATA**\n\n"
-        f"**Segment:** {segment}\n"
-        f"**Jenis Order:** {jenis_order}\n\n"
-        f"service no: {payload['service_no']}\n"
-        f"tiket no: {payload['tiket_no']}\n"
-        f"order no: {payload['order_no']}\n"
-        f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
-        f"labor code teknisi 1: {payload['labor_code_teknisi_1']}\n"
-        f"labor code teknisi 2: {payload['labor_code_teknisi_2']}\n"
-        f"tanggal jam start: {payload['start_dt']}\n"
-        f"tanggal jam close: {payload['close_dt']}\n"
-        f"workzone: {payload['workzone']}\n\n"
-        "Apakah data ini sudah benar?"
-    )
+summary = (
+    "📋 **MOHON KONFIRMASI DATA**\n\n"
+    f"**Segment:** {segment}\n"
+    f"**Jenis Order:** {jenis_order}\n\n"
+    f"service no: {payload['service_no']}\n"
+    f"tiket no: {payload['tiket_no']}\n"
+    f"order no: {payload['order_no']}\n"
+    f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
+    f"teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
+    f"teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
+    f"tanggal jam start: {payload['start_dt']}\n"
+    f"tanggal jam close: {payload['close_dt']}\n"
+    f"workzone: {payload['workzone']}\n\n"
+    "Apakah data ini sudah benar?"
+)
 
     await bot.send_message(
         chat_id=chat_id,
@@ -377,6 +535,34 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
+
+    if q.data.startswith("TECH_UNIT|"):
+        _, unit, target = q.data.split("|", 2)
+        await q.edit_message_text(
+            f"Pilih **Teknisi** dari unit **{unit}**:",
+            reply_markup=tech_list_keyboard(unit, target),
+            parse_mode="Markdown",
+        )
+        return
+
+    if q.data.startswith("TECH_PICK|"):
+        _, unit, idx, target = q.data.split("|", 3)
+        tech = TECH_UNITS[unit][int(idx)]
+
+        context.user_data["form_answers"][target] = tech["labor"]
+        context.user_data["form_answers"][f"{target}_name"] = tech["name"]
+
+        context.user_data["form_step"] += 1
+        await ask_next_question(q.message.chat_id, context, context.bot)
+        return
+
+    if q.data.startswith("TECH_NONE|"):
+        _, target = q.data.split("|", 1)
+        context.user_data["form_answers"][target] = ""
+        context.user_data["form_answers"][f"{target}_name"] = ""
+        context.user_data["form_step"] += 1
+        await ask_next_question(q.message.chat_id, context, context.bot)
+        return
 
     # ===== Konfirmasi sebelum simpan =====
     if q.data == "CONFIRM_SAVE":
@@ -510,6 +696,14 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
         else:
             context.user_data["form_answers"][field] = text
+            
+elif field == "datek_odp":
+    if text == "":
+        await update.message.reply_text(
+            "Datek ODP **wajib diisi** untuk jenis order ini."
+        )
+        return
+    context.user_data["form_answers"][field] = text
 
     else:
         if text == "":
@@ -550,6 +744,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
