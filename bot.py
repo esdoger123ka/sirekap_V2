@@ -372,16 +372,8 @@ def cancel_keyboard():
 
 
 def _allowed_units_for_segment(segment: str):
-    # lebih aman pakai equality daripada "in"
-    if segment == "Assurance B2C":
-        return ["Assurance B2C"]
-    if segment == "Provisioning B2C":
-        return ["Provisioning B2C"]
-    if segment in {"Assurance B2B Internal", "Assurance B2B Eksternal"}:
-        return ["Assurance B2B"]
-    if segment in {"Provisioning B2B", "Provisioning B2B Eksternal"}:
-        return ["Provisioning B2B"]
-    return ["Maintenance & External"]
+    # Semua unit teknisi boleh mengerjakan semua jenis pekerjaan
+    return list(TECH_UNITS.keys())
 
 
 def tech_unit_keyboard(target_field: str, segment: str, allow_none: bool = False):
@@ -751,3 +743,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
