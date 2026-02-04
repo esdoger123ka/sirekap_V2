@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import os
 from datetime import datetime
 import requests
@@ -17,7 +18,6 @@ from telegram.ext import (
 TOKEN = os.getenv("BOT_TOKEN")
 GS_WEBAPP_URL = os.getenv("GS_WEBAPP_URL")
 PAGE_SIZE = 8
-
 
 
 # ===================== DATA: SEGMENT -> JENIS ORDER =====================
@@ -150,6 +150,8 @@ SEGMENTS = list(SEGMENT_ORDERS.keys())
 ASSURANCE_SEGMENTS = {"Assurance B2B Internal", "Assurance B2B Eksternal", "Assurance B2C"}
 PROVISIONING_SEGMENTS = {"Provisioning B2B", "Provisioning B2B Eksternal", "Provisioning B2C"}
 
+
+# ===================== TEKNISI (MENU PILIH) =====================
 TECH_UNITS = {
     "Assurance B2C": [
         {"name": "MAKARIUS SUMIARSO", "labor": "74130340"},
@@ -181,7 +183,6 @@ TECH_UNITS = {
         {"name": "SETIO PRAMONO", "labor": "18840003"},
         {"name": "HENDRA SURYANA", "labor": "18780003"},
     ],
-
     "Provisioning B2C": [
         {"name": "ADJI FIRMANSYAH", "labor": "18990315"},
         {"name": "AGUNG HARDIYANTO", "labor": "18980502"},
@@ -217,7 +218,6 @@ TECH_UNITS = {
         {"name": "NUR FUAD S", "labor": "18990319"},
         {"name": "NURDIANA SOPIAN SAHURI", "labor": "20961181"},
     ],
-
     "Assurance B2B": [
         {"name": "YUSUF SAFARI", "labor": "20971337"},
         {"name": "IKHSAN QOYUM", "labor": "18950127"},
@@ -234,14 +234,12 @@ TECH_UNITS = {
         {"name": "AZIZ FAUZIAN", "labor": "19980255"},
         {"name": "MOCH TAUFIK", "labor": "18910276"},
     ],
-
     "Provisioning B2B": [
         {"name": "FIKRI FS", "labor": "18990137"},
         {"name": "SAHRUL DARMAWAN", "labor": "19950053"},
         {"name": "SURYADI LESAMA", "labor": "18880014"},
         {"name": "FAISAL NUR AZIZ", "labor": "20940687"},
     ],
-
     "Maintenance & External": [
         {"name": "SUDRAJAT", "labor": "18740021"},
         {"name": "YANTO HERYANTO", "labor": "19810003"},
@@ -254,14 +252,14 @@ TECH_UNITS = {
 def tiket_optional(jenis_order: str) -> bool:
     s = (jenis_order or "").lower()
     return ("tangible" in s) or ("ixsa" in s) or ("unspec" in s)
-    
+
+
 ORDERS_WITH_DATEK_ODP = {
     # Provisioning B2C
     "PSB Indihome",
     "PDA",
     "Survey PT2",
     "Progress PT2",
-
     # Provisioning B2B
     "PSB DATIN",
     "PSB INDIBIZ",
@@ -269,26 +267,25 @@ ORDERS_WITH_DATEK_ODP = {
     "PSB WIFI",
 }
 
+
 def fields_for_segment(segment: str, jenis_order: str):
     if segment in ASSURANCE_SEGMENTS:
         fields = ["service_no", "tiket_no"]
     else:
         fields = ["service_no", "order_no"]
 
-    # ⬅️ Tambahan khusus
     if jenis_order in ORDERS_WITH_DATEK_ODP:
         fields.append("datek_odp")
 
     fields += ["labor1", "labor2", "start_dt", "close_dt", "workzone"]
     return fields
 
+
 PROMPTS = {
     "service_no": "Isi **service no**:",
     "tiket_no": "Isi **tiket no** (kalau tidak ada untuk Tangible/IXSA/Unspec, ketik `-`):",
     "order_no": "Isi **order no**:",
     "datek_odp": "Isi **datek ODP**:",
-    "labor1": "Isi **labor code teknisi 1**:",
-    "labor2": "Isi **labor code teknisi 2** (kalau tidak ada, ketik `-`):",
     "start_dt": "Isi **tanggal jam start** format `DD/MM/YYYY HH:MM` (contoh: `03/02/2026 08:30`):",
     "close_dt": "Isi **tanggal jam close** format `DD/MM/YYYY HH:MM` (contoh: `03/02/2026 17:10`):",
     "workzone": "Isi **workzone**:",
@@ -315,10 +312,10 @@ def clear_form(context: ContextTypes.DEFAULT_TYPE):
         "form_step",
         "form_answers",
         "form_page",
-        "pending_payload",   # ⬅️ INI YANG DITAMBAHKAN
+        "pending_payload",
+        "last_tech_unit",  # untuk TECH_BACK
     ]:
         context.user_data.pop(k, None)
-
 
 
 def start_form(context: ContextTypes.DEFAULT_TYPE, segment: str, jenis_order: str, page: int):
@@ -335,37 +332,6 @@ def start_form(context: ContextTypes.DEFAULT_TYPE, segment: str, jenis_order: st
 def segment_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton(seg, callback_data=f"SEG|{seg}|0")] for seg in SEGMENTS])
 
-def tech_unit_keyboard(target_field: str, segment: str, allow_none=False):
-    allowed_units = []
-
-    if "Assurance B2C" in segment:
-        allowed_units = ["Assurance B2C"]
-    elif "Provisioning B2C" in segment:
-        allowed_units = ["Provisioning B2C"]
-    elif "Assurance B2B" in segment:
-        allowed_units = ["Assurance B2B"]
-    elif "Provisioning B2B" in segment:
-        allowed_units = ["Provisioning B2B"]
-    else:
-        allowed_units = ["Maintenance & External"]
-
-    rows = [
-        [InlineKeyboardButton(unit, callback_data=f"TECH_UNIT|{unit}|{target_field}")]
-        for unit in allowed_units
-    ]
-
-    if allow_none:
-        rows.append([InlineKeyboardButton("➖ Tidak ada teknisi 2", callback_data=f"TECH_NONE|{target_field}")])
-
-    return InlineKeyboardMarkup(rows)
-
-def tech_list_keyboard(unit: str, target_field: str):
-    rows = []
-    for i, t in enumerate(TECH_UNITS.get(unit, [])):
-        label = f"{t['name']} — {t['labor']}"
-        rows.append([InlineKeyboardButton(label, callback_data=f"TECH_PICK|{unit}|{i}|{target_field}")])
-    rows.append([InlineKeyboardButton("⬅️ Kembali", callback_data=f"TECH_BACK|{target_field}")])
-    return InlineKeyboardMarkup(rows)
 
 def orders_keyboard(segment: str, page: int):
     orders = SEGMENT_ORDERS.get(segment, [])
@@ -402,9 +368,43 @@ def confirm_keyboard():
 
 
 def cancel_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("❌ Batalkan input", callback_data="CANCEL_FORM")]
-    ])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("❌ Batalkan input", callback_data="CANCEL_FORM")]])
+
+
+def _allowed_units_for_segment(segment: str):
+    # lebih aman pakai equality daripada "in"
+    if segment == "Assurance B2C":
+        return ["Assurance B2C"]
+    if segment == "Provisioning B2C":
+        return ["Provisioning B2C"]
+    if segment in {"Assurance B2B Internal", "Assurance B2B Eksternal"}:
+        return ["Assurance B2B"]
+    if segment in {"Provisioning B2B", "Provisioning B2B Eksternal"}:
+        return ["Provisioning B2B"]
+    return ["Maintenance & External"]
+
+
+def tech_unit_keyboard(target_field: str, segment: str, allow_none: bool = False):
+    allowed_units = _allowed_units_for_segment(segment)
+
+    rows = [[InlineKeyboardButton(unit, callback_data=f"TECH_UNIT|{unit}|{target_field}")] for unit in allowed_units]
+
+    if allow_none:
+        rows.append([InlineKeyboardButton("➖ Tidak ada teknisi 2", callback_data=f"TECH_NONE|{target_field}")])
+
+    return InlineKeyboardMarkup(rows)
+
+
+def tech_list_keyboard(unit: str, target_field: str):
+    rows = []
+    # NOTE: ini bisa panjang, tapi OK untuk sekarang (kalau mau paging nanti kita bikin)
+    for i, t in enumerate(TECH_UNITS.get(unit, [])):
+        label = f"{t['name']} — {t['labor']}"
+        rows.append([InlineKeyboardButton(label, callback_data=f"TECH_PICK|{unit}|{i}|{target_field}")])
+
+    rows.append([InlineKeyboardButton("⬅️ Kembali", callback_data=f"TECH_BACK|{target_field}")])
+    return InlineKeyboardMarkup(rows)
+
 
 # ===================== BOT FLOW =====================
 async def ask_next_question(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
@@ -417,31 +417,25 @@ async def ask_next_question(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bo
 
     field = fields[step]
 
-if field == "labor1":
-    await bot.send_message(
-        chat_id=chat_id,
-        text="Pilih **Unit Teknisi (Teknisi 1)**:",
-        reply_markup=tech_unit_keyboard(
-            "labor1",
-            context.user_data["form_segment"]
-        ),
-        parse_mode="Markdown",
-    )
-    return
+    # labor1 & labor2 pakai menu teknisi
+    if field == "labor1":
+        await bot.send_message(
+            chat_id=chat_id,
+            text="Pilih **Unit Teknisi (Teknisi 1)**:",
+            reply_markup=tech_unit_keyboard("labor1", context.user_data["form_segment"], allow_none=False),
+            parse_mode="Markdown",
+        )
+        return
 
-if field == "labor2":
-    await bot.send_message(
-        chat_id=chat_id,
-        text="Pilih **Unit Teknisi (Teknisi 2)**:",
-        reply_markup=tech_unit_keyboard(
-            "labor2",
-            context.user_data["form_segment"],
-            allow_none=True
-        ),
-        parse_mode="Markdown",
-    )
-    return
-    
+    if field == "labor2":
+        await bot.send_message(
+            chat_id=chat_id,
+            text="Pilih **Unit Teknisi (Teknisi 2)**:",
+            reply_markup=tech_unit_keyboard("labor2", context.user_data["form_segment"], allow_none=True),
+            parse_mode="Markdown",
+        )
+        return
+
     prompt = PROMPTS[field]
     await bot.send_message(
         chat_id=chat_id,
@@ -452,7 +446,6 @@ if field == "labor2":
 
 
 async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
-
     segment = context.user_data["form_segment"]
     jenis_order = context.user_data["form_order"]
     ans = context.user_data["form_answers"]
@@ -484,24 +477,23 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         "workzone": ans.get("workzone", "").strip(),
     }
 
-    # ⬅️ SIMPAN SEMENTARA (BELUM KIRIM KE SHEET)
     context.user_data["pending_payload"] = payload
 
-summary = (
-    "📋 **MOHON KONFIRMASI DATA**\n\n"
-    f"**Segment:** {segment}\n"
-    f"**Jenis Order:** {jenis_order}\n\n"
-    f"service no: {payload['service_no']}\n"
-    f"tiket no: {payload['tiket_no']}\n"
-    f"order no: {payload['order_no']}\n"
-    f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
-    f"teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
-    f"teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
-    f"tanggal jam start: {payload['start_dt']}\n"
-    f"tanggal jam close: {payload['close_dt']}\n"
-    f"workzone: {payload['workzone']}\n\n"
-    "Apakah data ini sudah benar?"
-)
+    summary = (
+        "📋 **MOHON KONFIRMASI DATA**\n\n"
+        f"**Segment:** {segment}\n"
+        f"**Jenis Order:** {jenis_order}\n\n"
+        f"service no: {payload['service_no']}\n"
+        f"tiket no: {payload['tiket_no']}\n"
+        f"order no: {payload['order_no']}\n"
+        f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
+        f"teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
+        f"teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
+        f"tanggal jam start: {payload['start_dt']}\n"
+        f"tanggal jam close: {payload['close_dt']}\n"
+        f"workzone: {payload['workzone']}\n\n"
+        "Apakah data ini sudah benar?"
+    )
 
     await bot.send_message(
         chat_id=chat_id,
@@ -532,15 +524,32 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Tidak ada input aktif. Ketik /menu untuk mulai.")
 
 
+# ===================== BUTTON HANDLER =====================
 async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
 
+    # ---- TECH flow ----
     if q.data.startswith("TECH_UNIT|"):
         _, unit, target = q.data.split("|", 2)
+        context.user_data["last_tech_unit"] = unit  # untuk tombol back
         await q.edit_message_text(
             f"Pilih **Teknisi** dari unit **{unit}**:",
             reply_markup=tech_list_keyboard(unit, target),
+            parse_mode="Markdown",
+        )
+        return
+
+    if q.data.startswith("TECH_BACK|"):
+        _, target = q.data.split("|", 1)
+        # balik ke menu unit (yang sesuai segment)
+        await q.edit_message_text(
+            "Pilih **Unit Teknisi**:",
+            reply_markup=tech_unit_keyboard(
+                target,
+                context.user_data.get("form_segment", ""),
+                allow_none=(target == "labor2"),
+            ),
             parse_mode="Markdown",
         )
         return
@@ -564,16 +573,19 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await ask_next_question(q.message.chat_id, context, context.bot)
         return
 
-    # ===== Konfirmasi sebelum simpan =====
+    # ---- CONFIRM SAVE/CANCEL ----
     if q.data == "CONFIRM_SAVE":
         payload = context.user_data.get("pending_payload")
         if not payload:
             await q.edit_message_text("⚠️ Data tidak ditemukan. Ketik /menu untuk ulang.")
             return
 
+        if not GS_WEBAPP_URL:
+            await q.edit_message_text("⚠️ GS_WEBAPP_URL belum diset di environment.")
+            return
+
         try:
             r = requests.post(GS_WEBAPP_URL, json=payload, timeout=15)
-
             if r.status_code == 200:
                 recap = (
                     "✅ **Data BERHASIL disimpan ke Google Sheet.**\n\n"
@@ -583,8 +595,9 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"- Service No: {payload.get('service_no','')}\n"
                     f"- Tiket No: {(payload.get('tiket_no') or '-')}\n"
                     f"- Order No: {(payload.get('order_no') or '-')}\n"
-                    f"- Labor 1: {payload.get('labor_code_teknisi_1','')}\n"
-                    f"- Labor 2: {(payload.get('labor_code_teknisi_2') or '-')}\n"
+                    f"- Datek ODP: {(payload.get('datek_odp') or '-')}\n"
+                    f"- Teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
+                    f"- Teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
                     f"- Start: {payload.get('start_dt','')}\n"
                     f"- Close: {payload.get('close_dt','')}\n"
                     f"- Workzone: {payload.get('workzone','')}\n\n"
@@ -597,24 +610,21 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await q.edit_message_text(f"⚠️ Error kirim data: {e}")
 
-        context.user_data.pop("pending_payload", None)
         clear_form(context)
         return
 
     if q.data == "CONFIRM_CANCEL":
-        context.user_data.pop("pending_payload", None)
         clear_form(context)
         await q.edit_message_text("❌ Input dibatalkan. Ketik /menu untuk mulai ulang.")
         return
 
+    # ---- CANCEL / HOME ----
     if q.data == "CANCEL_FORM":
-        context.user_data.pop("pending_payload", None)
         clear_form(context)
         await q.edit_message_text("✅ Input dibatalkan. Ketik /menu untuk mulai lagi.")
         return
 
     if q.data == "HOME":
-        context.user_data.pop("pending_payload", None)
         clear_form(context)
         await q.edit_message_text(
             "Silakan pilih **Segment**:",
@@ -623,6 +633,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # ---- SEGMENT paging ----
     if q.data.startswith("SEG|"):
         _, segment, page_str = q.data.split("|", 2)
         page = int(page_str)
@@ -632,6 +643,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(text, reply_markup=orders_keyboard(segment, page), parse_mode="Markdown")
         return
 
+    # ---- ORDER pick ----
     if q.data.startswith("ORD|"):
         _, segment, idx_str, page_str = q.data.split("|", 3)
         idx = int(idx_str)
@@ -643,8 +655,8 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         jenis_order = orders[idx]
-
         start_form(context, segment, jenis_order, page)
+
         context.user_data["telegram_user_id"] = update.effective_user.id if update.effective_user else ""
 
         await q.edit_message_text(
@@ -683,27 +695,21 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         context.user_data["form_answers"][field] = dt.strftime("%d/%m/%Y %H:%M")
 
-    elif field == "labor2":
-        context.user_data["form_answers"][field] = "" if text == "-" else text
-
     elif field == "tiket_no":
-        # tiket boleh kosong untuk Tangible/IXSA/Unspec (Assurance)
         if text == "-" or text == "":
             if segment in ASSURANCE_SEGMENTS and tiket_optional(jenis_order):
-                context.user_data["form_answers"][field] = ""  # boleh kosong
+                context.user_data["form_answers"][field] = ""
             else:
                 await update.message.reply_text("Tiket no tidak boleh kosong untuk order ini. Isi tiket no.")
                 return
         else:
             context.user_data["form_answers"][field] = text
-            
-elif field == "datek_odp":
-    if text == "":
-        await update.message.reply_text(
-            "Datek ODP **wajib diisi** untuk jenis order ini."
-        )
-        return
-    context.user_data["form_answers"][field] = text
+
+    elif field == "datek_odp":
+        if text == "":
+            await update.message.reply_text("Datek ODP **wajib diisi** untuk jenis order ini.")
+            return
+        context.user_data["form_answers"][field] = text
 
     else:
         if text == "":
@@ -718,7 +724,6 @@ elif field == "datek_odp":
         c = parse_dt(ans["close_dt"])
         if s and c and c < s:
             await update.message.reply_text("Tanggal close tidak boleh lebih awal dari start. Isi **tanggal jam close** lagi.")
-            # paksa balik ke close_dt
             context.user_data["form_step"] = fields.index("close_dt")
             return
 
@@ -729,6 +734,8 @@ elif field == "datek_odp":
 
 # ===================== MAIN =====================
 def main():
+    if not TOKEN:
+        raise RuntimeError("BOT_TOKEN belum di-set di environment.")
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start_cmd))
@@ -744,12 +751,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
