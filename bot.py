@@ -109,7 +109,7 @@ SEGMENT_ORDERS = {
         "Tiket GAMAS FEEDER",
         "Tiket GAMAS ODC",
         "Tiket GAMAS ODP",
-        "Tiket Reguler VVIP",
+        "Tiket Reguler",
         "Tiket Reguler Diamond",
         "Unspec Reguler",
         "Validasi Tiang",
@@ -231,6 +231,7 @@ ORDER_MAN_HOURS = {
     "Lapsung (Laporan Langsung)": 2.0,
     "SQM Reguler": 2.0,
     "Tangible ODP": 2.0,
+    "Tiket Reguler": 2.0,
     "Unspec Reguler": 2.0,
     "Validasi Tiang": 0.3,
     "Valins FTM": 4.0,
@@ -1031,4 +1032,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
