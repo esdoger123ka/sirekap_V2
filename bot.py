@@ -511,7 +511,7 @@ def fields_for_segment(segment: str, jenis_order: str):
 
 
 PROMPTS = {
-    "service_no": "Isi **service no**:",
+    "service_no": "Isi **service no** (Isi datek ODP kalau tidak ada):",
     "tiket_no": "Isi **tiket no** (kalau tidak ada untuk Tangible/IXSA/Unspec, ketik `-`):",
     "order_no": "Isi **order no**:",
     "datek_odp": "Isi **datek ODP**:",
@@ -954,7 +954,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===================== TEXT INPUT HANDLER =====================
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not form_active(context):
-        await update.message.reply_text("Ketik /menu untuk mulai pilih Segment & Jenis Order.")
+        await update.message.reply_text("Ketik /menu untuk mulai input pekerjaan, dan ketik /capaian untuk melihat capaian dalam 1 bulan.")
         return
 
     text = (update.message.text or "").strip()
@@ -1031,3 +1031,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
