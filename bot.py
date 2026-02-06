@@ -155,30 +155,125 @@ PROVISIONING_SEGMENTS = {"Provisioning B2B", "Provisioning B2B Eksternal", "Prov
 
 
 # ===================== BOBOT / MAN HOURS =====================
-def parse_man_hours(raw: str) -> float | None:
-    try:
-        value = float((raw or "").replace(",", ".").strip())
-        if value <= 0:
-            return None
-        return value
-    except (TypeError, ValueError):
-        return None
+# Sumber dari user; jenis order yang tidak terdefinisi dianggap 0.
+ORDER_MAN_HOURS = {
+    # Assurance B2B Eksternal
+    "Aktivasi Cross Connect TDE": 4.0,
+    "Aktivasi/Migrasi/Dismantel DCS": 4.0,
+    "Aktivasi/Migrasi/Dismantel Digiserve": 4.0,
+    "Aktivasi/Migrasi/Dismantel Hypernet": 4.0,
+    "Corrective Akses Tower CENTRATAMA": 4.0,
+    "Corrective Akses Tower Lintasarta": 4.0,
+    "Corrective Akses Tower UMT": 4.0,
+    "Corrective Cross Connect TDE": 4.0,
+    "Corrective CSA": 4.0,
+    "Corrective DCS": 4.0,
+    "Corrective Digiserve": 4.0,
+    "Corrective Hypernet": 4.0,
+    "Corrective MMP": 4.0,
+    "Corrective MyRep": 4.0,
+    "Corrective NuTech": 2.0,
+    "Corrective SNT": 4.0,
+    "Corrective SPBU": 4.0,
+    "Corrective TBG": 4.0,
+    "Corrective Tower POLARIS": 4.0,
+    "Corrective Tower TIS": 4.0,
+    "Inventory SPBU": 4.0,
+    "Preventif MMP": 2.0,
+    "Preventive Akses Tower CENTRATAMA": 2.0,
+    "Preventive Akses Tower Lintasarta": 2.0,
+    "Preventive Akses Tower UMT": 2.0,
+    "Preventive Asianet": 2.67,
+    "Preventive CSA": 2.0,
+    "Preventive NuTech": 2.0,
+    "Preventive SPBU": 4.0,
+    "Preventive TBG": 2.0,
+    "Preventive Tower POLARIS": 2.0,
+    "Preventive Tower TIS": 2.0,
+    "Relokasi DCS": 1.0,
+    "Relokasi Digiserve": 1.0,
+    "Relokasi Hypernet": 1.0,
+    "Corrective Mitratel": 4.0,
+    # Assurance B2B Internal
+    "HSI Indihome Reseller": 2.0,
+    "Tiket Datin Kategori 1": 2.67,
+    "Tiket Datin Kategori 2": 2.67,
+    "Tiket Datin Kategori 3": 2.67,
+    "Tiket HSI Indibiz": 2.0,
+    "Tiket NodeB CNQ (Preventive/Quality)": 4.0,
+    "Tiket NodeB Critical": 6.0,
+    "Tiket NodeB Low": 4.0,
+    "Tiket NodeB Major": 4.0,
+    "Tiket NodeB Minor": 4.0,
+    "Tiket NodeB Premium": 6.0,
+    "Tiket NodeB Premium Preventive": 4.0,
+    "Tiket OLO Datin Gamas": 4.0,
+    "Tiket OLO Datin Non Gamas": 4.0,
+    "Tiket OLO Datin Quality": 4.0,
+    "Tiket OLO SL WDM": 4.0,
+    "Tiket OLO SL WDM Quality": 4.0,
+    "Tiket Pra SQM Gaul HSI": 2.0,
+    "Tiket SIP Trunk": 2.67,
+    "Tiket SQM Datin": 2.67,
+    "Tiket SQM HSI": 2.0,
+    "Tiket WIFI ID": 2.67,
+    "Tiket Wifi Logic": 2.67,
+    "Unspec DATIN": 2.67,
+    "Unspec HSI": 2.0,
+    "Unspec SITE": 2.0,
+    "Unspec WIFI": 2.0,
+    # Assurance B2C
+    "Dismantling DC": 1.0,
+    "Infracare": 2.0,
+    "IXSA FTM": 4.0,
+    "IXSA ODC": 4.0,
+    "IXSA OLT": 2.0,
+    "Lapsung (Laporan Langsung)": 2.0,
+    "SQM Reguler": 2.0,
+    "Tangible ODP": 2.0,
+    "Tiket Reguler": 2.0,
+    "Unspec Reguler": 2.0,
+    "Validasi Tiang": 0.3,
+    "Valins FTM": 4.0,
+    "Tiket Gamas DISTRIBUSI": 4.0,
+    "Valins ODC": 4.0,
+    "Valins Regular": 0.5,
+    # Provisioning B2B
+    "PSB INDIBIZ": 5.3,
+    "PSB OLO": 6.3,
+    "PSB WIFI": 6.3,
+    "Tiket FFG DATIN": 2.0,
+    "Tiket FFG HSI": 2.0,
+    "Tiket FFG WIFI": 2.0,
+    # Provisioning B2B Eksternal
+    "Preventive Fiberisasi": 2.0,
+    "PSB MyRep": 2.0,
+    "PSB Surge": 2.0,
+    # Provisioning B2C
+    "DISMANTLING ONT": 0.67,
+    "DISMANTLING PLC": 0.67,
+    "DISMANTLING STB": 0.67,
+    "DISMANTLING WIFI EXTENDER": 0.67,
+    "DISMANTLING FWA": 0.67,
+    "PDA": 5.3,
+    "PSB Indihome": 5.3,
+    "REPLACEMENT ONT Premium/Dual Band": 1.33,
+    "REPLACEMENT STB": 1.33,
+    "Tiket FFG Indihome": 2.0,
+    "Survey PT2": 1.5,
+    "Progress PT2": 2.0,
+}
 
 
-def normalize_month_key(value: str) -> str:
-    value = (value or "").strip()
-    if re.fullmatch(r"(0[1-9]|1[0-2])/\d{4}", value):
-        return value
-
-    dt = parse_dt(value)
-    if dt:
-        return dt.strftime("%m/%Y")
-
-    return datetime.now().strftime("%m/%Y")
+def man_hours_for_order(jenis_order: str) -> float:
+    return float(ORDER_MAN_HOURS.get(jenis_order, 0.0))
 
 
 def month_key_from_dt(dt_str: str) -> str:
-    return normalize_month_key(dt_str)
+    dt = parse_dt(dt_str or "")
+    if not dt:
+        dt = datetime.now()
+    return dt.strftime("%m/%Y")
 
 
 def get_conn():
@@ -287,6 +382,37 @@ def get_monthly_summary(labor_code: str, month_key: str):
     return total_row, detail_rows
 
 
+
+
+def get_default_labor_code_for_user(telegram_user_id: str):
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT labor_code
+            FROM job_credits
+            WHERE telegram_user_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (str(telegram_user_id),),
+        ).fetchone()
+    return row[0] if row else ""
+
+
+def get_available_months(labor_code: str):
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT month_key
+            FROM job_credits
+            WHERE labor_code = ?
+            GROUP BY month_key
+            ORDER BY substr(month_key, 4, 4) DESC, substr(month_key, 1, 2) DESC
+            LIMIT 6
+            """,
+            (labor_code,),
+        ).fetchall()
+    return [r[0] for r in rows]
 # ===================== TEKNISI (MENU PILIH) =====================
 TECH_UNITS = {
     "Assurance B2C": [
@@ -413,7 +539,7 @@ def fields_for_segment(segment: str, jenis_order: str):
     if jenis_order in ORDERS_WITH_DATEK_ODP:
         fields.append("datek_odp")
 
-    fields += ["labor1", "labor2", "start_dt", "close_dt", "man_hours", "workzone"]
+    fields += ["labor1", "labor2", "start_dt", "close_dt", "workzone"]
     return fields
 
 
@@ -424,7 +550,6 @@ PROMPTS = {
     "datek_odp": "Isi **datek ODP**:",
     "start_dt": "Isi **tanggal jam start** format `DD/MM/YYYY HH:MM` (contoh: `03/02/2026 08:30`):",
     "close_dt": "Isi **tanggal jam close** format `DD/MM/YYYY HH:MM` (contoh: `03/02/2026 17:10`):",
-    "man_hours": "Isi **bobot/man-hours** pekerjaan (angka, contoh: `2` atau `2.67`):",
     "workzone": "Isi **workzone**:",
 }
 
@@ -593,7 +718,7 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         "telegram_user_id": str(user_id),
         "segment": segment,
         "jenis_order": jenis_order,
-        "man_hours_order": float(ans.get("man_hours", 0.0)),
+        "man_hours_order": man_hours_for_order(jenis_order),
         "service_no": ans.get("service_no", "").strip(),
         "tiket_no": tiket_no,
         "order_no": order_no,
@@ -622,7 +747,7 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         f"tanggal jam start: {payload['start_dt']}\n"
         f"tanggal jam close: {payload['close_dt']}\n"
         f"workzone: {payload['workzone']}\n\n"
-        f"bobot/man-hours pekerjaan: {payload['man_hours_order']:.2f}\n\n"
+        f"bobot/man-hours order: {payload['man_hours_order']:.2f}\n\n"
         "Apakah data ini sudah benar?"
     )
 
@@ -674,12 +799,17 @@ async def capaian_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not labor_code:
+        user_id = update.effective_user.id if update.effective_user else ""
+        labor_code = get_default_labor_code_for_user(str(user_id)) if user_id else ""
+
+    if not labor_code:
         await update.message.reply_text(
             "Gunakan format:\n"
             "`/capaian <labor_code> [MM/YYYY]`\n\n"
             "Contoh:\n"
             "`/capaian 20971337`\n"
-            "`/capaian 20971337 02/2026`",
+            "`/capaian 20971337 02/2026`\n\n"
+            "Atau cukup `/capaian` jika kamu sudah pernah input pekerjaan sebelumnya.",
             parse_mode="Markdown",
         )
         return
@@ -687,8 +817,13 @@ async def capaian_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     (total_job, total_mh), detail_rows = get_monthly_summary(labor_code, month_key)
 
     if total_job == 0:
+        months = get_available_months(labor_code)
+        extra = ""
+        if months:
+            extra = "\n\nBulan yang tersedia: " + ", ".join(f"*{m}*" for m in months)
+
         await update.message.reply_text(
-            f"Belum ada data untuk labor code *{labor_code}* di bulan *{month_key}*.",
+            f"Belum ada data untuk labor code *{labor_code}* di bulan *{month_key}*.{extra}",
             parse_mode="Markdown",
         )
         return
@@ -787,7 +922,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"- Start: {payload.get('start_dt','')}\n"
                     f"- Close: {payload.get('close_dt','')}\n"
                     f"- Workzone: {payload.get('workzone','')}\n\n"
-                    f"- Bobot/MH Pekerjaan: {payload.get('man_hours_order', 0):.2f}\n\n"
+                    f"- Bobot/MH Order: {payload.get('man_hours_order', 0):.2f}\n\n"
                     "Ketik /menu untuk input data baru."
                 )
                 await q.edit_message_text(recap, parse_mode="Markdown")
@@ -882,13 +1017,6 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         context.user_data["form_answers"][field] = dt.strftime("%d/%m/%Y %H:%M")
 
-    elif field == "man_hours":
-        mh = parse_man_hours(text)
-        if mh is None:
-            await update.message.reply_text("Bobot/man-hours harus angka lebih dari 0 (contoh: `2` atau `2.67`).")
-            return
-        context.user_data["form_answers"][field] = mh
-
     elif field == "tiket_no":
         if text == "-" or text == "":
             if segment in ASSURANCE_SEGMENTS and tiket_optional(jenis_order):
@@ -946,7 +1074,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 
 
