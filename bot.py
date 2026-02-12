@@ -438,7 +438,6 @@ def get_monthly_summary_from_sheet(labor_code: str, month_key: str) -> tuple:
 
     return (total_job, total_mh), detail_rows
 
-
 # ===================== TEKNISI (MENU PILIH) =====================
 TECH_UNITS = {
     "Assurance B2C": [
@@ -836,18 +835,24 @@ async def capaian_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     source_label = "Google Sheet"
+    sheet_error = ""
     try:
         (total_job, total_mh), detail_rows = get_monthly_summary_from_sheet(labor_code, month_key)
-    except Exception:
+    except Exception as e:
         # fallback aman ke database lokal jika endpoint sheet belum siap/error
         source_label = "Database Lokal (fallback)"
+        sheet_error = str(e)
         (total_job, total_mh), detail_rows = get_monthly_summary(labor_code, month_key)
 
     if total_job == 0:
-        await update.message.reply_text(
-            f"Belum ada data untuk labor code *{labor_code}* di bulan *{month_key}*.",
-            parse_mode="Markdown",
+        msg = (
+            f"Belum ada data untuk labor code *{labor_code}* di bulan *{month_key}*.\n"
+            f"Sumber data: *{source_label}*"
         )
+        if sheet_error:
+            msg += f"\nCatatan: akses Google Sheet gagal (*{sheet_error}*)."
+
+        await update.message.reply_text(msg, parse_mode="Markdown")
         return
 
     lines = [
@@ -1097,6 +1102,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
