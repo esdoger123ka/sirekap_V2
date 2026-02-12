@@ -130,6 +130,8 @@ SEGMENT_ORDERS = {
     "Provisioning B2B Eksternal": [
         "Preventive Fiberisasi",
         "PSB MyRep",
+        "FTTR IBU",
+        "SPPG",
         "PSB Surge",
     ],
     "Provisioning B2C": [
@@ -139,6 +141,7 @@ SEGMENT_ORDERS = {
         "DISMANTLING WIFI EXTENDER",
         "DISMANTLING FWA",
         "PDA",
+        "ORBIT",
         "PSB Indihome",
         "REPLACEMENT ONT Premium/Dual Band",
         "Survey PT2",
@@ -249,6 +252,8 @@ ORDER_MAN_HOURS = {
     "Preventive Fiberisasi": 2.0,
     "PSB MyRep": 2.0,
     "PSB Surge": 2.0,
+    "FTTR IBU": 5.0,
+    "SPPG": 4.0,
     # Provisioning B2C
     "DISMANTLING ONT": 0.67,
     "DISMANTLING PLC": 0.67,
@@ -256,6 +261,7 @@ ORDER_MAN_HOURS = {
     "DISMANTLING WIFI EXTENDER": 0.67,
     "DISMANTLING FWA": 0.67,
     "PDA": 5.3,
+    "ORBIT": 1,1,
     "PSB Indihome": 5.3,
     "REPLACEMENT ONT Premium/Dual Band": 1.33,
     "REPLACEMENT STB": 1.33,
@@ -393,7 +399,7 @@ TECH_UNITS = {
         {"name": "YOGI SETIAWAN", "labor": "89170014"},
         {"name": "NUGROHO EDI SUSANTO", "labor": "87155938"},
         {"name": "BENY SOMANTRI", "labor": "20740013"},
-        {"name": "FIRMAN FUJI KHOMIRUN", "labor": "POJ3BDB2_016"},
+        {"name": "FIRMAN FUJI KHOMIRUN", "labor": "18870008"},
         {"name": "ARIFIN SURIFIN", "labor": "18720002"},
         {"name": "AHMAD RANGGA MUZAKKI", "labor": "21000004"},
         {"name": "IQBAL FAUZI", "labor": "99170252"},
@@ -1033,5 +1039,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
