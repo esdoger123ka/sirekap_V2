@@ -261,7 +261,7 @@ ORDER_MAN_HOURS = {
     "DISMANTLING WIFI EXTENDER": 0.67,
     "DISMANTLING FWA": 0.67,
     "PDA": 5.3,
-    "ORBIT": 1,1,
+    "ORBIT": 1.1,
     "PSB Indihome": 5.3,
     "REPLACEMENT ONT Premium/Dual Band": 1.33,
     "REPLACEMENT STB": 1.33,
@@ -1039,6 +1039,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
