@@ -19,6 +19,7 @@ from telegram.ext import (
 # ================= CONFIG =================
 TOKEN = os.getenv("BOT_TOKEN")
 GS_WEBAPP_URL = os.getenv("GS_WEBAPP_URL")
+GS_CAPAIAN_URL = os.getenv("GS_CAPAIAN_URL", GS_WEBAPP_URL)
 PAGE_SIZE = 8
 DB_PATH = os.getenv("BOT_DB_PATH", "bot_data.db")
 
@@ -366,7 +367,7 @@ def _is_month_arg(text: str) -> bool:
     return bool(re.fullmatch(r"(0[1-9]|1[0-2])/\d{4}", text or ""))
 
 
-def get_monthly_summary(labor_code: str, month_key: str):
+def get_monthly_summary(labor_code: str, month_key: str)
     with get_conn() as conn:
         total_row = conn.execute(
             """
@@ -389,6 +390,53 @@ def get_monthly_summary(labor_code: str, month_key: str):
         ).fetchall()
 
     return total_row, detail_rows
+
+
+def get_monthly_summary_from_sheet(labor_code: str, month_key: str):
+    """
+    Ambil data capaian dari Google Apps Script (doGet).
+    Endpoint diharapkan menerima query:
+      ?action=capaian&labor_code=<...>&month=<MM/YYYY>
+    dan merespon JSON:
+      {
+        "ok": true,
+        "total_job": 10,
+        "total_mh": 24.5,
+        "details": [
+          {"jenis_order": "PSB Indihome", "total_job": 3, "total_mh": 15.9}
+        ]
+      }
+    """
+    if not GS_CAPAIAN_URL:
+        raise RuntimeError("GS_CAPAIAN_URL/GS_WEBAPP_URL belum diset di environment.")
+
+    resp = requests.get(
+        GS_CAPAIAN_URL,
+        params={
+            "action": "capaian",
+            "labor_code": labor_code,
+            "month": month_key,
+        },
+        timeout=20,
+    )
+    resp.raise_for_status()
+
+    payload = resp.json()
+    if not payload.get("ok"):
+        raise RuntimeError(payload.get("error") or "Respons Apps Script tidak valid.")
+
+    total_job = int(payload.get("total_job", 0) or 0)
+    total_mh = float(payload.get("total_mh", 0) or 0)
+
+    details = payload.get("details", []) or []
+    detail_rows = []
+    for row in details:
+        jenis_order = str(row.get("jenis_order", "") or "")
+        job_count = int(row.get("total_job", 0) or 0)
+        mh_sum = float(row.get("total_mh", 0) or 0)
+        detail_rows.append((jenis_order, job_count, mh_sum))
+
+    return (total_job, total_mh), detail_rows
 
 
 # ===================== TEKNISI (MENU PILIH) =====================
@@ -787,7 +835,13 @@ async def capaian_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    (total_job, total_mh), detail_rows = get_monthly_summary(labor_code, month_key)
+    source_label = "Google Sheet"
+    try:
+        (total_job, total_mh), detail_rows = get_monthly_summary_from_sheet(labor_code, month_key)
+    except Exception:
+        # fallback aman ke database lokal jika endpoint sheet belum siap/error
+        source_label = "Database Lokal (fallback)"
+        (total_job, total_mh), detail_rows = get_monthly_summary(labor_code, month_key)
 
     if total_job == 0:
         await update.message.reply_text(
@@ -800,6 +854,7 @@ async def capaian_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📊 *CAPAIAN MAN HOURS*",
         f"Labor Code: *{labor_code}*",
         f"Bulan: *{month_key}*",
+        f"Sumber Data: *{source_label}*",
         f"Total Job: *{total_job}*",
         f"Total Man Hours: *{total_mh:.2f}*",
         "",
@@ -1042,6 +1097,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
