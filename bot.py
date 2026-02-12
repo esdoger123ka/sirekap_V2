@@ -367,7 +367,7 @@ def _is_month_arg(text: str) -> bool:
     return bool(re.fullmatch(r"(0[1-9]|1[0-2])/\d{4}", text or ""))
 
 
-def get_monthly_summary(labor_code: str, month_key: str)
+def get_monthly_summary(labor_code: str, month_key: str) -> tuple:
     with get_conn() as conn:
         total_row = conn.execute(
             """
@@ -392,7 +392,7 @@ def get_monthly_summary(labor_code: str, month_key: str)
     return total_row, detail_rows
 
 
-def get_monthly_summary_from_sheet(labor_code: str, month_key: str):
+def get_monthly_summary_from_sheet(labor_code: str, month_key: str) -> tuple:
     """
     Ambil data capaian dari Google Apps Script (doGet).
     Endpoint diharapkan menerima query:
@@ -1097,6 +1097,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
