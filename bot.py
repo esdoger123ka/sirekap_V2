@@ -580,8 +580,30 @@ PROMPTS = {
 
 
 def parse_dt(s: str):
+    raw = (s or "").strip()
+    if not raw:
+        return None
+
+    # Format utama dari bot: DD/MM/YYYY HH:MM
+    # Tetap support variasi lama/eksternal seperti:
+    # - D/M/YYYY H:M
+    # - DD/MM/YYYY HH:MM:SS
+    m = re.fullmatch(
+        r"(\d{1,2})/(\d{1,2})/(\d{4})\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?",
+        raw,
+    )
+    if not m:
+        return None
+
+    day = int(m.group(1))
+    month = int(m.group(2))
+    year = int(m.group(3))
+    hour = int(m.group(4))
+    minute = int(m.group(5))
+    second = int(m.group(6) or 0)
+
     try:
-        return datetime.strptime(s.strip(), "%d/%m/%Y %H:%M")
+        return datetime(year, month, day, hour, minute, second)
     except ValueError:
         return None
 
@@ -743,6 +765,7 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         "telegram_user_id": str(user_id),
         "segment": segment,
         "jenis_order": jenis_order,
+        "month_key": month_key_from_dt(ans.get("close_dt", "")),
         "man_hours_order": man_hours_for_order(jenis_order),
         "service_no": ans.get("service_no", "").strip(),
         "tiket_no": tiket_no,
@@ -1102,12 +1125,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
