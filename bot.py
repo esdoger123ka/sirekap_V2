@@ -238,7 +238,7 @@ ORDER_MAN_HOURS = {
     "Unspec Reguler": 2.0,
     "Validasi Tiang": 0.3,
     "Valins FTM": 4.0,
-    "Tiket Gamas DISTRIBUSI": 4.0,
+    "Tiket GAMAS DISTRIBUSI": 4.0,
     "Valins ODC": 4.0,
     "Valins Regular": 0.5,
     # Provisioning B2B
@@ -1039,6 +1039,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
