@@ -239,6 +239,9 @@ ORDER_MAN_HOURS = {
     "Validasi Tiang": 0.3,
     "Valins FTM": 4.0,
     "Tiket GAMAS DISTRIBUSI": 4.0,
+    "Tiket GAMAS FEEDER": 10.0,
+    "Tiket GAMAS ODC": 18.0,
+    "Tiket GAMAS ODP": 3.0,
     "Valins ODC": 4.0,
     "Valins Regular": 0.5,
     # Provisioning B2B
@@ -1039,6 +1042,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
