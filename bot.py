@@ -451,6 +451,7 @@ TECH_UNITS = {
         {"name": "BENY SOMANTRI", "labor": "20740013"},
         {"name": "FIRMAN FUJI KHOMIRUN", "labor": "18870008"},
         {"name": "ARIFIN SURIFIN", "labor": "18720002"},
+        {"name": "R AGUS NUGRAHA", "labor": "19730010"},
         {"name": "AHMAD RANGGA MUZAKKI", "labor": "21000004"},
         {"name": "IQBAL FAUZI", "labor": "99170252"},
         {"name": "ENJANG ABDUL HAMID", "labor": "80152394"},
@@ -1125,3 +1126,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
