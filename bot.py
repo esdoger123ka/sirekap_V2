@@ -248,6 +248,7 @@ ORDER_MAN_HOURS = {
     # Provisioning B2B
     "PSB INDIBIZ": 5.3,
     "PSB OLO": 6.3,
+    "PSB DATIN": 6.3,
     "PSB WIFI": 6.3,
     "Tiket FFG DATIN": 2.0,
     "Tiket FFG HSI": 2.0,
@@ -257,7 +258,7 @@ ORDER_MAN_HOURS = {
     "PSB MyRep": 2.0,
     "PSB Surge": 2.0,
     "FTTR IBU": 5.0,
-    "SPPG": 4.0,
+    "SPPG": 8.0,
     # Provisioning B2C
     "DISMANTLING ONT": 0.67,
     "DISMANTLING PLC": 0.67,
@@ -1128,5 +1129,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
