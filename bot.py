@@ -603,42 +603,6 @@ def build_field_guide(fields: list[str]) -> str:
     lines.append("\nGunakan format tanggal: `DD/MM/YYYY HH:MM`.")
     return "\n".join(lines)
 
-def build_progress_bar(step: int, total: int, width: int = 8) -> str:
-    if total <= 0:
-        return ""
-    filled = round((step / total) * width)
-    filled = max(0, min(width, filled))
-    return "🧱 " + ("█" * filled) + ("░" * (width - filled))
-
-
-def build_welcome_text() -> str:
-    return (
-        "👋 *Selamat datang di Bot Sirekap V2*\n"
-        "Bot ini membantu rekap pekerjaan harian secara lebih cepat dan konsisten.\n\n"
-        "Ketik /help untuk melihat panduan command.\n\n"
-        "Silakan pilih *Segment* untuk mulai input data."
-    )
-
-
-def build_confirmation_summary(payload: dict) -> str:
-    return (
-        "📋 **MOHON KONFIRMASI DATA**\n\n"
-        f"**Segment:** {payload.get('segment','')}\n"
-        f"**Jenis Order:** {payload.get('jenis_order','')}\n\n"
-        "🧾 **Detail Input**\n"
-        f"• Service No: {payload.get('service_no','-')}\n"
-        f"• Tiket No: {payload.get('tiket_no') or '-'}\n"
-        f"• Order No: {payload.get('order_no') or '-'}\n"
-        f"• Datek ODP: {payload.get('datek_odp') or '-'}\n"
-        f"• Teknisi 1: {payload.get('nama_teknisi_1','-')} ({payload.get('labor_code_teknisi_1','-')})\n"
-        f"• Teknisi 2: {payload.get('nama_teknisi_2') or '-'} ({payload.get('labor_code_teknisi_2') or '-'})\n"
-        f"• Start: {payload.get('start_dt','-')}\n"
-        f"• Close: {payload.get('close_dt','-')}\n"
-        f"• Workzone: {payload.get('workzone','-')}\n\n"
-        f"⏱️ **Bobot / Man Hours:** {payload.get('man_hours_order', 0):.2f}\n\n"
-        "Apakah data ini sudah benar?"
-    )
-
 
 def parse_dt(s: str):
     raw = (s or "").strip()
@@ -810,21 +774,13 @@ async def ask_next_question(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bo
 
     field = fields[step]
 
-    total_steps = len(fields)
-    step_label = f"*Langkah {step + 1}/{total_steps}*"
-    progress = build_progress_bar(step + 1, total_steps)
-    header = (
-        f"{step_label}\n"
-        f"{progress}\n"
-        f"Segment: *{context.user_data.get('form_segment', '-')}*\n"
-        f"Order: *{context.user_data.get('form_order', '-')}*"
-    )
+    step_label = f"*Langkah {step + 1}/{len(fields)}*"
 
     # labor1 & labor2 pakai menu teknisi
     if field == "labor1":
         await bot.send_message(
             chat_id=chat_id,
-            text=f"{header}\n\nPilih **Unit Teknisi (Teknisi 1)**:",
+            text=f"{step_label}\nPilih **Unit Teknisi (Teknisi 1)**:",
             reply_markup=tech_unit_keyboard("labor1", context.user_data["form_segment"], allow_none=False),
             parse_mode="Markdown",
         )
@@ -833,7 +789,7 @@ async def ask_next_question(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bo
     if field == "labor2":
         await bot.send_message(
             chat_id=chat_id,
-            text=f"{header}\n\nPilih **Unit Teknisi (Teknisi 2)**:\n(Boleh pilih *Tidak ada teknisi 2*)",
+            text=f"{step_label}\nPilih **Unit Teknisi (Teknisi 2)**:\n(Boleh pilih *Tidak ada teknisi 2*)",
             reply_markup=tech_unit_keyboard("labor2", context.user_data["form_segment"], allow_none=True),
             parse_mode="Markdown",
         )
@@ -842,7 +798,7 @@ async def ask_next_question(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bo
     prompt = PROMPTS[field]
     await bot.send_message(
         chat_id=chat_id,
-        text=f"{header}\n\n{prompt}\n\nKetik /cancel untuk membatalkan.",
+        text=f"{step_label}\n{prompt}\n\nKetik /cancel untuk membatalkan.",
         reply_markup=cancel_keyboard(),
         parse_mode="Markdown",
     )
@@ -884,7 +840,22 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
 
     context.user_data["pending_payload"] = payload
 
-    summary = build_confirmation_summary(payload)
+    summary = (
+        "📋 **MOHON KONFIRMASI DATA**\n\n"
+        f"**Segment:** {segment}\n"
+        f"**Jenis Order:** {jenis_order}\n\n"
+        f"service no: {payload['service_no']}\n"
+        f"tiket no: {payload['tiket_no']}\n"
+        f"order no: {payload['order_no']}\n"
+        f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
+        f"teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
+        f"teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
+        f"tanggal jam start: {payload['start_dt']}\n"
+        f"tanggal jam close: {payload['close_dt']}\n"
+        f"workzone: {payload['workzone']}\n\n"
+        f"bobot/man-hours order: {payload['man_hours_order']:.2f}\n\n"
+        "Apakah data ini sudah benar?"
+    )
 
     await bot.send_message(
         chat_id=chat_id,
@@ -913,7 +884,13 @@ def help_text() -> str:
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     clear_form(context)
-    await update.message.reply_text(build_welcome_text(), reply_markup=segment_keyboard(), parse_mode="Markdown")
+    welcome = (
+        "👋 *Selamat Datang di bot Sirekap V2*\n"
+        "Bot ini digunakan untuk merekapitulasi pekerjaan yang telah dilakukan.\n\n"
+        "Ketik /help untuk panduan lengkap command.\n\n"
+        "Silakan pilih *Segment* untuk mulai input data:"
+    )
+    await update.message.reply_text(welcome, reply_markup=segment_keyboard(), parse_mode="Markdown")
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1100,7 +1077,22 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text("⚠️ Ringkasan data tidak ditemukan. Ketik /menu untuk ulang.")
             return
 
-        summary = build_confirmation_summary(payload))
+        summary = (
+            "📋 **MOHON KONFIRMASI DATA**\n\n"
+            f"**Segment:** {payload.get('segment','')}\n"
+            f"**Jenis Order:** {payload.get('jenis_order','')}\n\n"
+            f"service no: {payload.get('service_no','')}\n"
+            f"tiket no: {payload.get('tiket_no','')}\n"
+            f"order no: {payload.get('order_no','')}\n"
+            f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
+            f"teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
+            f"teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
+            f"tanggal jam start: {payload.get('start_dt','')}\n"
+            f"tanggal jam close: {payload.get('close_dt','')}\n"
+            f"workzone: {payload.get('workzone','')}\n\n"
+            f"bobot/man-hours order: {payload.get('man_hours_order', 0):.2f}\n\n"
+            "Apakah data ini sudah benar?"
+        )
         await q.edit_message_text(summary, reply_markup=confirm_keyboard(), parse_mode="Markdown")
         return
 
@@ -1238,7 +1230,13 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===================== TEXT INPUT HANDLER =====================
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not form_active(context):
-        await update.message.reply_text(build_welcome_text(), reply_markup=segment_keyboard(), parse_mode="Markdown")
+        welcome = (
+            "👋 *Selamat Datang di bot Sirekap V2*\n"
+            "Bot ini digunakan untuk merekapitulasi pekerjaan yang telah dilakukan.\n\n"
+            "Ketik /help untuk panduan lengkap command.\n\n"
+            "Silakan pilih *Segment* untuk mulai input data:"
+        )
+        await update.message.reply_text(welcome, reply_markup=segment_keyboard(), parse_mode="Markdown")
         return
 
     text = (update.message.text or "").strip()
@@ -1319,7 +1317,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
 
 
