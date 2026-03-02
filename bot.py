@@ -288,6 +288,14 @@ def month_key_from_dt(dt_str: str) -> str:
     return dt.strftime("%m/%Y")
 
 
+def month_key_for_sheet(dt_str: str) -> str:
+    """
+    Google Sheets bisa otomatis mengubah "03/2026" menjadi tanggal (mis: 3/1/2026).
+    Prefix apostrof memaksa nilai disimpan sebagai teks tanpa mengubah tampilan.
+    """
+    return "'" + month_key_from_dt(dt_str)
+
+
 def get_conn():
     return sqlite3.connect(DB_PATH)
 
@@ -412,8 +420,15 @@ def get_monthly_summary_from_sheet(labor_code: str, month_key: str) -> tuple:
     if not GS_CAPAIAN_URL:
         raise RuntimeError("GS_CAPAIAN_URL/GS_WEBAPP_URL belum diset di environment.")
 
+    source_url = GS_CAPAIAN_URL.strip()
+    if "docs.google.com/spreadsheets/" in source_url:
+        raise RuntimeError(
+            "GS_CAPAIAN_URL mengarah ke Google Spreadsheet, bukan Web App Apps Script. "
+            "Gunakan URL deployment Web App yang berakhiran /exec."
+        )
+
     resp = requests.get(
-        GS_CAPAIAN_URL,
+        source_url,
         params={
             "action": "capaian",
             "labor_code": labor_code,
@@ -427,6 +442,12 @@ def get_monthly_summary_from_sheet(labor_code: str, month_key: str) -> tuple:
     body = (resp.text or "").strip()
     if not body:
         raise RuntimeError("Respons Apps Script kosong.")
+
+    if "docs.google.com/spreadsheets/" in resp.url:
+        raise RuntimeError(
+            "Request capaian ter-redirect ke halaman Google Spreadsheet (HTML), "
+            "bukan endpoint Web App Apps Script. Periksa GS_CAPAIAN_URL agar memakai URL /exec."
+        )
 
     try:
         payload = resp.json()
@@ -838,7 +859,7 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         "telegram_user_id": str(user_id),
         "segment": segment,
         "jenis_order": jenis_order,
-        "month_key": month_key_from_dt(ans.get("close_dt", "")),
+        "month_key": month_key_for_sheet(ans.get("close_dt", "")),
         "man_hours_order": man_hours_for_order(jenis_order),
         "service_no": ans.get("service_no", "").strip(),
         "tiket_no": tiket_no,
@@ -1332,6 +1353,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
 
