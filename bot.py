@@ -419,11 +419,26 @@ def get_monthly_summary_from_sheet(labor_code: str, month_key: str) -> tuple:
             "labor_code": labor_code,
             "month": month_key,
         },
+        allow_redirects=True,
         timeout=20,
     )
     resp.raise_for_status()
 
-    payload = resp.json()
+    body = (resp.text or "").strip()
+    if not body:
+        raise RuntimeError("Respons Apps Script kosong.")
+
+    try:
+        payload = resp.json()
+    except ValueError as err:
+        snippet = body.replace("\n", " ")[:200]
+        ctype = resp.headers.get("Content-Type", "")
+        raise RuntimeError(
+            "Respons Apps Script bukan JSON valid. "
+            f"status={resp.status_code}, content_type={ctype or '-'}, "
+            f"url_final={resp.url}, body_sample={snippet!r}, parse_error={err}"
+        ) from err
+
     if not payload.get("ok"):
         raise RuntimeError(payload.get("error") or "Respons Apps Script tidak valid.")
 
@@ -1317,5 +1332,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
