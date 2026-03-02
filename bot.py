@@ -1230,7 +1230,13 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===================== TEXT INPUT HANDLER =====================
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not form_active(context):
-        await update.message.reply_text("Ketik /menu untuk mulai input pekerjaan, dan ketik /capaian untuk melihat capaian dalam 1 bulan.")
+        welcome = (
+            "👋 *Selamat Datang di bot Sirekap V2*\n"
+            "Bot ini digunakan untuk merekapitulasi pekerjaan yang telah dilakukan.\n\n"
+            "Ketik /help untuk panduan lengkap command.\n\n"
+            "Silakan pilih *Segment* untuk mulai input data:"
+        )
+        await update.message.reply_text(welcome, reply_markup=segment_keyboard(), parse_mode="Markdown")
         return
 
     text = (update.message.text or "").strip()
@@ -1311,5 +1317,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
