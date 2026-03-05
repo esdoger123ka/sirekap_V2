@@ -669,6 +669,18 @@ def parse_dt(s: str):
         return None
 
 
+def normalize_dt_for_sheet(s: str) -> str:
+    """
+    Ubah input tanggal ambigu (DD/MM/YYYY HH:MM[:SS]) menjadi format ISO-like
+    (YYYY-MM-DD HH:MM:SS) supaya tidak salah dibaca Google Sheets/App Script
+    sebagai MM/DD/YYYY.
+    """
+    dt = parse_dt(s or "")
+    if not dt:
+        return (s or "").strip()
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
 def form_active(context: ContextTypes.DEFAULT_TYPE) -> bool:
     return bool(context.user_data.get("form_active"))
 
@@ -854,12 +866,15 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
     if order_no == "-":
         order_no = ""
 
+    raw_start_dt = ans.get("start_dt", "").strip()
+    raw_close_dt = ans.get("close_dt", "").strip()
+
     payload = {
-        "timestamp_input": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "timestamp_input": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "telegram_user_id": str(user_id),
         "segment": segment,
         "jenis_order": jenis_order,
-        "month_key": month_key_for_sheet(ans.get("close_dt", "")),
+        "month_key": month_key_for_sheet(raw_close_dt),
         "man_hours_order": man_hours_for_order(jenis_order),
         "service_no": ans.get("service_no", "").strip(),
         "tiket_no": tiket_no,
@@ -869,8 +884,8 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         "labor_code_teknisi_2": ans.get("labor2", "").strip(),
         "nama_teknisi_1": ans.get("labor1_name", "").strip(),
         "nama_teknisi_2": ans.get("labor2_name", "").strip(),
-        "start_dt": ans.get("start_dt", "").strip(),
-        "close_dt": ans.get("close_dt", "").strip(),
+        "start_dt": normalize_dt_for_sheet(raw_start_dt),
+        "close_dt": normalize_dt_for_sheet(raw_close_dt),
         "workzone": ans.get("workzone", "").strip(),
     }
 
@@ -886,8 +901,8 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
         f"teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
         f"teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
-        f"tanggal jam start: {payload['start_dt']}\n"
-        f"tanggal jam close: {payload['close_dt']}\n"
+        f"tanggal jam start: {raw_start_dt}\n"
+        f"tanggal jam close: {raw_close_dt}\n"
         f"workzone: {payload['workzone']}\n\n"
         f"bobot/man-hours order: {payload['man_hours_order']:.2f}\n\n"
         "Apakah data ini sudah benar?"
@@ -1353,5 +1368,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
