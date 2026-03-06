@@ -1157,37 +1157,44 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text("⚠️ GS_WEBAPP_URL belum diset di environment.")
             return
 
+        def mark_saved_and_build_recap() -> str:
+            save_job_credits(payload)
+            context.user_data["last_saved_segment"] = payload.get("segment", "")
+            context.user_data["last_saved_order"] = payload.get("jenis_order", "")
+            context.user_data["last_saved_page"] = int(context.user_data.get("form_page", 0) or 0)
+            return (
+                "✅ **Data BERHASIL disimpan ke Google Sheet.**\n\n"
+                "📌 **Ringkasan data:**\n"
+                f"- Segment: {payload.get('segment','')}\n"
+                f"- Jenis Order: {payload.get('jenis_order','')}\n"
+                f"- Service No: {payload.get('service_no','')}\n"
+                f"- Tiket No: {(payload.get('tiket_no') or '-')}\n"
+                f"- Order No: {(payload.get('order_no') or '-')}\n"
+                f"- Datek ODP: {(payload.get('datek_odp') or '-')}\n"
+                f"- Teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
+                f"- Teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
+                f"- Start: {payload.get('start_dt','')}\n"
+                f"- Close: {payload.get('close_dt','')}\n"
+                f"- Workzone: {payload.get('workzone','')}\n\n"
+                f"- Bobot/MH Order: {payload.get('man_hours_order', 0):.2f}\n\n"
+                "Pilih aksi berikut untuk lanjut."
+            )
+
         try:
             r = requests.post(GS_WEBAPP_URL, json=payload, timeout=15)
             if r.status_code == 200:
-                save_job_credits(payload)
-                context.user_data["last_saved_segment"] = payload.get("segment", "")
-                context.user_data["last_saved_order"] = payload.get("jenis_order", "")
-                context.user_data["last_saved_page"] = int(context.user_data.get("form_page", 0) or 0)
-                recap = (
-                    "✅ **Data BERHASIL disimpan ke Google Sheet.**\n\n"
-                    "📌 **Ringkasan data:**\n"
-                    f"- Segment: {payload.get('segment','')}\n"
-                    f"- Jenis Order: {payload.get('jenis_order','')}\n"
-                    f"- Service No: {payload.get('service_no','')}\n"
-                    f"- Tiket No: {(payload.get('tiket_no') or '-')}\n"
-                    f"- Order No: {(payload.get('order_no') or '-')}\n"
-                    f"- Datek ODP: {(payload.get('datek_odp') or '-')}\n"
-                    f"- Teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
-                    f"- Teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
-                    f"- Start: {payload.get('start_dt','')}\n"
-                    f"- Close: {payload.get('close_dt','')}\n"
-                    f"- Workzone: {payload.get('workzone','')}\n\n"
-                    f"- Bobot/MH Order: {payload.get('man_hours_order', 0):.2f}\n\n"
-                    "Pilih aksi berikut untuk lanjut."
-                )
+                recap = mark_saved_and_build_recap()
                 await q.edit_message_text(recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
             else:
                 await q.edit_message_text(f"⚠️ Gagal simpan ke Google Sheet (HTTP {r.status_code}).")
 
+        except requests.exceptions.ReadTimeout:
+            recap = mark_saved_and_build_recap()
+            recap += "\n\nℹ️ Respons Google Sheet timeout, tetapi data kemungkinan sudah tersimpan."
+            await q.edit_message_text(recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
+
         except Exception as e:
             await q.edit_message_text(f"⚠️ Error kirim data: {e}")
-
         clear_form(context)
         return
 
@@ -1368,4 +1375,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
