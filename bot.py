@@ -3,10 +3,12 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+from html import escape as html_escape
 from datetime import datetime
 import requests
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import BadRequest
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -875,6 +877,31 @@ def tech_list_keyboard(unit: str, target_field: str, page: int = 0):
     return InlineKeyboardMarkup(rows)
 
 
+def build_confirmation_html(payload: dict, start_dt: str, close_dt: str) -> str:
+    def val(key: str, default: str = "") -> str:
+        raw = payload.get(key, default)
+        if raw is None or raw == "":
+            raw = default
+        return html_escape(str(raw))
+
+    return (
+        "📋 <b>MOHON KONFIRMASI DATA</b>\n\n"
+        f"<b>Segment:</b> {val('segment')}\n"
+        f"<b>Jenis Order:</b> {val('jenis_order')}\n\n"
+        f"service no: {val('service_no')}\n"
+        f"tiket no: {val('tiket_no', '-')}\n"
+        f"order no: {val('order_no', '-')}\n"
+        f"datek ODP: {val('datek_odp', '-')}\n"
+        f"teknisi 1: {val('nama_teknisi_1')} ({val('labor_code_teknisi_1')})\n"
+        f"teknisi 2: {val('nama_teknisi_2', '-')} ({val('labor_code_teknisi_2', '-')})\n"
+        f"tanggal jam start: {html_escape(start_dt)}\n"
+        f"tanggal jam close: {html_escape(close_dt)}\n"
+        f"workzone: {val('workzone')}\n\n"
+        f"bobot/man-hours order: {float(payload.get('man_hours_order', 0) or 0):.2f}\n\n"
+        "Apakah data ini sudah benar?"
+    )
+
+
 # ===================== BOT FLOW =====================
 async def ask_next_question(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
     step = context.user_data["form_step"]
@@ -954,29 +981,13 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
     }
 
     context.user_data["pending_payload"] = payload
-
-    summary = (
-        "📋 **MOHON KONFIRMASI DATA**\n\n"
-        f"**Segment:** {segment}\n"
-        f"**Jenis Order:** {jenis_order}\n\n"
-        f"service no: {payload['service_no']}\n"
-        f"tiket no: {payload['tiket_no']}\n"
-        f"order no: {payload['order_no']}\n"
-        f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
-        f"teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
-        f"teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
-        f"tanggal jam start: {raw_start_dt}\n"
-        f"tanggal jam close: {raw_close_dt}\n"
-        f"workzone: {payload['workzone']}\n\n"
-        f"bobot/man-hours order: {payload['man_hours_order']:.2f}\n\n"
-        "Apakah data ini sudah benar?"
-    )
+    summary = build_confirmation_html(payload, raw_start_dt, raw_close_dt)
 
     await bot.send_message(
         chat_id=chat_id,
         text=summary,
         reply_markup=confirm_keyboard(),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -1097,7 +1108,12 @@ async def capaian_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===================== BUTTON HANDLER =====================
 async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    await q.answer()
+    try:
+        await q.answer()
+    except BadRequest as e:
+        if "Query is too old" not in str(e) and "query id is invalid" not in str(e):
+            raise
+
 
     # ---- TECH flow ----
     if q.data.startswith("TECH_UNIT|"):
@@ -1191,24 +1207,12 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not payload:
             await q.edit_message_text("⚠️ Ringkasan data tidak ditemukan. Ketik /menu untuk ulang.")
             return
-
-        summary = (
-            "📋 **MOHON KONFIRMASI DATA**\n\n"
-            f"**Segment:** {payload.get('segment','')}\n"
-            f"**Jenis Order:** {payload.get('jenis_order','')}\n\n"
-            f"service no: {payload.get('service_no','')}\n"
-            f"tiket no: {payload.get('tiket_no','')}\n"
-            f"order no: {payload.get('order_no','')}\n"
-            f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
-            f"teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
-            f"teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
-            f"tanggal jam start: {payload.get('start_dt','')}\n"
-            f"tanggal jam close: {payload.get('close_dt','')}\n"
-            f"workzone: {payload.get('workzone','')}\n\n"
-            f"bobot/man-hours order: {payload.get('man_hours_order', 0):.2f}\n\n"
-            "Apakah data ini sudah benar?"
+        summary = build_confirmation_html(
+            payload,
+            str(payload.get("start_dt", "") or ""),
+            str(payload.get("close_dt", "") or ""),
         )
-        await q.edit_message_text(summary, reply_markup=confirm_keyboard(), parse_mode="Markdown")
+        await q.edit_message_text(summary, reply_markup=confirm_keyboard(), parse_mode="HTML")
         return
 
     if q.data == "CONFIRM_SAVE":
@@ -1442,6 +1446,10 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await ask_next_question(update.effective_chat.id, context, context.bot)
 
 
+
+async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE):
+    print(f"⚠️ Error saat proses update: {context.error}")
+
 # ===================== MAIN =====================
 def main():
     if not TOKEN:
@@ -1456,14 +1464,14 @@ def main():
     app.add_handler(CommandHandler("capaian", capaian_cmd))
     app.add_handler(CallbackQueryHandler(on_click))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+    app.add_error_handler(on_error)
 
     print("✅ Bot sedang berjalan... tekan Ctrl+C untuk berhenti.")
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
     main()
-
 
 
 
