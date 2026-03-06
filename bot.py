@@ -23,7 +23,6 @@ GS_CAPAIAN_URL = os.getenv("GS_CAPAIAN_URL", GS_WEBAPP_URL)
 PAGE_SIZE = 8
 TECH_PAGE_SIZE = 10
 DB_PATH = os.getenv("BOT_DB_PATH", "bot_data.db")
-GS_SAVE_TIMEOUT_SECONDS = float(os.getenv("GS_SAVE_TIMEOUT_SECONDS", "45"))
 
 
 # ===================== DATA: SEGMENT -> JENIS ORDER =====================
@@ -1159,7 +1158,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         try:
-            r = requests.post(GS_WEBAPP_URL, json=payload, timeout=GS_SAVE_TIMEOUT_SECONDS)
+            r = requests.post(GS_WEBAPP_URL, json=payload, timeout=15)
             if r.status_code == 200:
                 save_job_credits(payload)
                 context.user_data["last_saved_segment"] = payload.get("segment", "")
@@ -1369,6 +1368,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
 
