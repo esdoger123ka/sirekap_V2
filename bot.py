@@ -1190,7 +1190,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         except requests.exceptions.ReadTimeout:
             recap = mark_saved_and_build_recap()
-            recap += "\n\nℹ️ Respons Google Sheet timeout, tetapi data kemungkinan sudah tersimpan."
+            recap += "\n\nℹ️ Untuk memastikan data benar benar tersimpan silahkan gunakan /capaian untuk melihat perubahannya"
             await q.edit_message_text(recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
 
         except Exception as e:
@@ -1375,5 +1375,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
