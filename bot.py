@@ -3,12 +3,10 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
-from html import escape as html_escape
 from datetime import datetime
 import requests
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.error import BadRequest
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -159,14 +157,6 @@ SEGMENTS = list(SEGMENT_ORDERS.keys())
 
 ASSURANCE_SEGMENTS = {"Assurance B2B Internal", "Assurance B2B Eksternal", "Assurance B2C"}
 PROVISIONING_SEGMENTS = {"Provisioning B2B", "Provisioning B2B Eksternal", "Provisioning B2C"}
-ALLOW_DUPLICATE_SEGMENTS = {"Assurance B2B Internal", "Assurance B2B Eksternal"}
-ALLOW_DUPLICATE_ORDERS = {
-    "Tiket GAMAS DISTRIBUSI",
-    "Tiket GAMAS FEEDER",
-    "Tiket GAMAS ODC",
-    "Tiket GAMAS ODP",
-    "SPPG",
-}
 
 
 # ===================== BOBOT / MAN HOURS =====================
@@ -330,62 +320,6 @@ def init_db():
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_job_credits_labor_month ON job_credits (labor_code, month_key)")
         conn.commit()
-
-
-def normalize_ref_value(value: str) -> str:
-    return re.sub(r"\s+", "", (value or "").strip()).upper()
-
-
-def allow_duplicate_for(segment: str, jenis_order: str) -> bool:
-    return segment in ALLOW_DUPLICATE_SEGMENTS or jenis_order in ALLOW_DUPLICATE_ORDERS
-
-
-def find_duplicate_ref_from_sheet(segment: str, jenis_order: str, tiket_no: str, order_no: str) -> tuple[str, str] | None:
-    if allow_duplicate_for(segment, jenis_order):
-        return None
-
-    if not GS_WEBAPP_URL:
-        raise RuntimeError("GS_WEBAPP_URL belum diset di environment.")
-
-    resp = requests.get(
-        GS_WEBAPP_URL,
-        params={
-            "action": "check_duplicate",
-            "segment": segment,
-            "jenis_order": jenis_order,
-            "tiket_no": tiket_no,
-            "order_no": order_no,
-            "tiket_no_norm": normalize_ref_value(tiket_no),
-            "order_no_norm": normalize_ref_value(order_no),
-        },
-        allow_redirects=True,
-        timeout=20,
-    )
-    resp.raise_for_status()
-
-    if "docs.google.com/spreadsheets/" in resp.url:
-        raise RuntimeError(
-            "Request duplicate check ter-redirect ke Spreadsheet (HTML), bukan endpoint Web App /exec."
-        )
-
-    data = resp.json()
-    if not isinstance(data, dict):
-        raise RuntimeError("Format respons duplicate check tidak valid.")
-
-    if not data.get("ok", True):
-        msg = str(data.get("message", "Gagal validasi duplikasi dari spreadsheet."))
-        raise RuntimeError(msg)
-
-    if bool(data.get("duplicate", False)):
-        ref_type = str(data.get("ref_type", "") or "")
-        ref_value = str(data.get("ref_value", "") or "")
-        if ref_type not in {"tiket_no", "order_no"}:
-            ref_type = "tiket_no" if tiket_no else "order_no"
-        if not ref_value:
-            ref_value = tiket_no if ref_type == "tiket_no" else order_no
-        return ref_type, ref_value
-
-    return None
 
 
 def save_job_credits(payload: dict):
@@ -877,61 +811,6 @@ def tech_list_keyboard(unit: str, target_field: str, page: int = 0):
     return InlineKeyboardMarkup(rows)
 
 
-def build_confirmation_html(payload: dict, start_dt: str, close_dt: str) -> str:
-    def val(key: str, default: str = "") -> str:
-        raw = payload.get(key, default)
-        if raw is None or raw == "":
-            raw = default
-        return html_escape(str(raw))
-
-    return (
-        "📋 <b>MOHON KONFIRMASI DATA</b>\n\n"
-        f"<b>Segment:</b> {val('segment')}\n"
-        f"<b>Jenis Order:</b> {val('jenis_order')}\n\n"
-        f"service no: {val('service_no')}\n"
-        f"tiket no: {val('tiket_no', '-')}\n"
-        f"order no: {val('order_no', '-')}\n"
-        f"datek ODP: {val('datek_odp', '-')}\n"
-        f"teknisi 1: {val('nama_teknisi_1')} ({val('labor_code_teknisi_1')})\n"
-        f"teknisi 2: {val('nama_teknisi_2', '-')} ({val('labor_code_teknisi_2', '-')})\n"
-        f"tanggal jam start: {html_escape(start_dt)}\n"
-        f"tanggal jam close: {html_escape(close_dt)}\n"
-        f"workzone: {val('workzone')}\n\n"
-        f"bobot/man-hours order: {float(payload.get('man_hours_order', 0) or 0):.2f}\n\n"
-        "Apakah data ini sudah benar?"
-    )
-
-
-def build_saved_recap(payload: dict, extra_note: str = "") -> str:
-    note = f"\n{extra_note}\n" if extra_note else "\n"
-    return (
-        "✅ **Data BERHASIL disimpan ke Google Sheet.**\n"
-        f"{note}"
-        "📌 **Ringkasan data:**\n"
-        f"- Segment: {payload.get('segment','')}\n"
-        f"- Jenis Order: {payload.get('jenis_order','')}\n"
-        f"- Service No: {payload.get('service_no','')}\n"
-        f"- Tiket No: {(payload.get('tiket_no') or '-')}\n"
-        f"- Order No: {(payload.get('order_no') or '-')}\n"
-        f"- Datek ODP: {(payload.get('datek_odp') or '-')}\n"
-        f"- Teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
-        f"- Teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
-        f"- Start: {payload.get('start_dt','')}\n"
-        f"- Close: {payload.get('close_dt','')}\n"
-        f"- Workzone: {payload.get('workzone','')}\n\n"
-        f"- Bobot/MH Order: {payload.get('man_hours_order', 0):.2f}\n\n"
-        "Pilih aksi berikut untuk lanjut."
-    )
-
-
-def remember_last_saved_payload(context: ContextTypes.DEFAULT_TYPE, payload: dict):
-    save_job_credits(payload)
-    context.user_data["last_saved_payload"] = dict(payload)
-    context.user_data["last_saved_segment"] = payload.get("segment", "")
-    context.user_data["last_saved_order"] = payload.get("jenis_order", "")
-    context.user_data["last_saved_page"] = int(context.user_data.get("form_page", 0) or 0)
-
-
 # ===================== BOT FLOW =====================
 async def ask_next_question(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
     step = context.user_data["form_step"]
@@ -1011,13 +890,29 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
     }
 
     context.user_data["pending_payload"] = payload
-    summary = build_confirmation_html(payload, raw_start_dt, raw_close_dt)
+
+    summary = (
+        "📋 **MOHON KONFIRMASI DATA**\n\n"
+        f"**Segment:** {segment}\n"
+        f"**Jenis Order:** {jenis_order}\n\n"
+        f"service no: {payload['service_no']}\n"
+        f"tiket no: {payload['tiket_no']}\n"
+        f"order no: {payload['order_no']}\n"
+        f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
+        f"teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
+        f"teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
+        f"tanggal jam start: {raw_start_dt}\n"
+        f"tanggal jam close: {raw_close_dt}\n"
+        f"workzone: {payload['workzone']}\n\n"
+        f"bobot/man-hours order: {payload['man_hours_order']:.2f}\n\n"
+        "Apakah data ini sudah benar?"
+    )
 
     await bot.send_message(
         chat_id=chat_id,
         text=summary,
         reply_markup=confirm_keyboard(),
-        parse_mode="HTML",
+        parse_mode="Markdown",
     )
 
 
@@ -1138,12 +1033,7 @@ async def capaian_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===================== BUTTON HANDLER =====================
 async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    try:
-        await q.answer()
-    except BadRequest as e:
-        if "Query is too old" not in str(e) and "query id is invalid" not in str(e):
-            raise
-
+    await q.answer()
 
     # ---- TECH flow ----
     if q.data.startswith("TECH_UNIT|"):
@@ -1237,25 +1127,30 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not payload:
             await q.edit_message_text("⚠️ Ringkasan data tidak ditemukan. Ketik /menu untuk ulang.")
             return
-        summary = build_confirmation_html(
-            payload,
-            str(payload.get("start_dt", "") or ""),
-            str(payload.get("close_dt", "") or ""),
+
+        summary = (
+            "📋 **MOHON KONFIRMASI DATA**\n\n"
+            f"**Segment:** {payload.get('segment','')}\n"
+            f"**Jenis Order:** {payload.get('jenis_order','')}\n\n"
+            f"service no: {payload.get('service_no','')}\n"
+            f"tiket no: {payload.get('tiket_no','')}\n"
+            f"order no: {payload.get('order_no','')}\n"
+            f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
+            f"teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
+            f"teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
+            f"tanggal jam start: {payload.get('start_dt','')}\n"
+            f"tanggal jam close: {payload.get('close_dt','')}\n"
+            f"workzone: {payload.get('workzone','')}\n\n"
+            f"bobot/man-hours order: {payload.get('man_hours_order', 0):.2f}\n\n"
+            "Apakah data ini sudah benar?"
         )
-        await q.edit_message_text(summary, reply_markup=confirm_keyboard(), parse_mode="HTML")
+        await q.edit_message_text(summary, reply_markup=confirm_keyboard(), parse_mode="Markdown")
         return
 
     if q.data == "CONFIRM_SAVE":
         payload = context.user_data.get("pending_payload")
         if not payload:
-            last_saved_payload = context.user_data.get("last_saved_payload")
-            if last_saved_payload:
-                await q.edit_message_text(
-                    "✅ Data sudah tersimpan sebelumnya. "
-                    "Silakan ketik /menu atau pilih aksi lanjutan di pesan terakhir."
-                )
-            else:
-                await q.edit_message_text("⚠️ Data tidak ditemukan. Ketik /menu untuk ulang.")
+            await q.edit_message_text("⚠️ Data tidak ditemukan. Ketik /menu untuk ulang.")
             return
 
         if not GS_WEBAPP_URL:
@@ -1263,63 +1158,32 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         try:
-            duplicate_ref = find_duplicate_ref_from_sheet(
-                str(payload.get("segment", "") or ""),
-                str(payload.get("jenis_order", "") or ""),
-                str(payload.get("tiket_no", "") or ""),
-                str(payload.get("order_no", "") or ""),
-            )
-        except Exception as dup_err:
-            await q.edit_message_text(
-                f"⚠️ Gagal validasi duplikasi dari Spreadsheet: {dup_err}\n"
-                "Periksa Apps Script action=check_duplicate lalu coba lagi.",
-            )
-            return
-        if duplicate_ref:
-            ref_type, ref_value = duplicate_ref
-            label = "Tiket No" if ref_type == "tiket_no" else "Order No"
-            await q.edit_message_text(
-                f"⚠️ {label} `{ref_value}` sudah pernah diinput. "
-                "Silakan cek data atau ketik /menu untuk input baru.",
-                parse_mode="Markdown",
-            )
-            return
-
-        try:
             r = requests.post(GS_WEBAPP_URL, json=payload, timeout=15)
             if r.status_code == 200:
-                remember_last_saved_payload(context, payload)
-                recap = build_saved_recap(payload)
+                save_job_credits(payload)
+                context.user_data["last_saved_segment"] = payload.get("segment", "")
+                context.user_data["last_saved_order"] = payload.get("jenis_order", "")
+                context.user_data["last_saved_page"] = int(context.user_data.get("form_page", 0) or 0)
+                recap = (
+                    "✅ **Data BERHASIL disimpan ke Google Sheet.**\n\n"
+                    "📌 **Ringkasan data:**\n"
+                    f"- Segment: {payload.get('segment','')}\n"
+                    f"- Jenis Order: {payload.get('jenis_order','')}\n"
+                    f"- Service No: {payload.get('service_no','')}\n"
+                    f"- Tiket No: {(payload.get('tiket_no') or '-')}\n"
+                    f"- Order No: {(payload.get('order_no') or '-')}\n"
+                    f"- Datek ODP: {(payload.get('datek_odp') or '-')}\n"
+                    f"- Teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
+                    f"- Teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
+                    f"- Start: {payload.get('start_dt','')}\n"
+                    f"- Close: {payload.get('close_dt','')}\n"
+                    f"- Workzone: {payload.get('workzone','')}\n\n"
+                    f"- Bobot/MH Order: {payload.get('man_hours_order', 0):.2f}\n\n"
+                    "Pilih aksi berikut untuk lanjut."
+                )
                 await q.edit_message_text(recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
             else:
                 await q.edit_message_text(f"⚠️ Gagal simpan ke Google Sheet (HTTP {r.status_code}).")
-
-        except requests.exceptions.ReadTimeout:
-            try:
-                post_timeout_ref = find_duplicate_ref_from_sheet(
-                    str(payload.get("segment", "") or ""),
-                    str(payload.get("jenis_order", "") or ""),
-                    str(payload.get("tiket_no", "") or ""),
-                    str(payload.get("order_no", "") or ""),
-                )
-            except Exception as verify_err:
-                await q.edit_message_text(
-                    "⚠️ Timeout saat kirim data ke Google Sheet, lalu gagal verifikasi data terbaru. "
-                    f"Detail verifikasi: {verify_err}"
-                )
-            else:
-                if post_timeout_ref:
-                    remember_last_saved_payload(context, payload)
-                    recap = build_saved_recap(
-                        payload,
-                        "ℹ️ Respon dari Google sempat timeout, tetapi data terdeteksi sudah tersimpan.",
-                    )
-                    await q.edit_message_text(recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
-                else:
-                    await q.edit_message_text(
-                        "⚠️ Timeout saat kirim data ke Google Sheet. "
-                        "Data belum bisa dipastikan tersimpan, silakan cek sheet lalu coba lagi."
-                    )
 
         except Exception as e:
             await q.edit_message_text(f"⚠️ Error kirim data: {e}")
@@ -1483,10 +1347,6 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await ask_next_question(update.effective_chat.id, context, context.bot)
 
 
-
-async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE):
-    print(f"⚠️ Error saat proses update: {context.error}")
-
 # ===================== MAIN =====================
 def main():
     if not TOKEN:
@@ -1501,15 +1361,12 @@ def main():
     app.add_handler(CommandHandler("capaian", capaian_cmd))
     app.add_handler(CallbackQueryHandler(on_click))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
-    app.add_error_handler(on_error)
 
     print("✅ Bot sedang berjalan... tekan Ctrl+C untuk berhenti.")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling()
 
 
 if __name__ == "__main__":
     main()
-
-
 
 
