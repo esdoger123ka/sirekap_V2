@@ -157,6 +157,14 @@ SEGMENTS = list(SEGMENT_ORDERS.keys())
 
 ASSURANCE_SEGMENTS = {"Assurance B2B Internal", "Assurance B2B Eksternal", "Assurance B2C"}
 PROVISIONING_SEGMENTS = {"Provisioning B2B", "Provisioning B2B Eksternal", "Provisioning B2C"}
+ALLOW_DUPLICATE_SEGMENTS = {"Assurance B2B Internal", "Assurance B2B Eksternal"}
+ALLOW_DUPLICATE_ORDERS = {
+    "Tiket GAMAS DISTRIBUSI",
+    "Tiket GAMAS FEEDER",
+    "Tiket GAMAS ODC",
+    "Tiket GAMAS ODP",
+    "SPPG",
+}
 
 
 # ===================== BOBOT / MAN HOURS =====================
@@ -320,6 +328,62 @@ def init_db():
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_job_credits_labor_month ON job_credits (labor_code, month_key)")
         conn.commit()
+
+
+def normalize_ref_value(value: str) -> str:
+    return re.sub(r"\s+", "", (value or "").strip()).upper()
+
+
+def allow_duplicate_for(segment: str, jenis_order: str) -> bool:
+    return segment in ALLOW_DUPLICATE_SEGMENTS or jenis_order in ALLOW_DUPLICATE_ORDERS
+
+
+def find_duplicate_ref_from_sheet(segment: str, jenis_order: str, tiket_no: str, order_no: str) -> tuple[str, str] | None:
+    if allow_duplicate_for(segment, jenis_order):
+        return None
+
+    if not GS_WEBAPP_URL:
+        raise RuntimeError("GS_WEBAPP_URL belum diset di environment.")
+
+    resp = requests.get(
+        GS_WEBAPP_URL,
+        params={
+            "action": "check_duplicate",
+            "segment": segment,
+            "jenis_order": jenis_order,
+            "tiket_no": tiket_no,
+            "order_no": order_no,
+            "tiket_no_norm": normalize_ref_value(tiket_no),
+            "order_no_norm": normalize_ref_value(order_no),
+        },
+        allow_redirects=True,
+        timeout=20,
+    )
+    resp.raise_for_status()
+
+    if "docs.google.com/spreadsheets/" in resp.url:
+        raise RuntimeError(
+            "Request duplicate check ter-redirect ke Spreadsheet (HTML), bukan endpoint Web App /exec."
+        )
+
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise RuntimeError("Format respons duplicate check tidak valid.")
+
+    if not data.get("ok", True):
+        msg = str(data.get("message", "Gagal validasi duplikasi dari spreadsheet."))
+        raise RuntimeError(msg)
+
+    if bool(data.get("duplicate", False)):
+        ref_type = str(data.get("ref_type", "") or "")
+        ref_value = str(data.get("ref_value", "") or "")
+        if ref_type not in {"tiket_no", "order_no"}:
+            ref_type = "tiket_no" if tiket_no else "order_no"
+        if not ref_value:
+            ref_value = tiket_no if ref_type == "tiket_no" else order_no
+        return ref_type, ref_value
+
+    return None
 
 
 def save_job_credits(payload: dict):
@@ -1150,7 +1214,14 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if q.data == "CONFIRM_SAVE":
         payload = context.user_data.get("pending_payload")
         if not payload:
-            await q.edit_message_text("⚠️ Data tidak ditemukan. Ketik /menu untuk ulang.")
+            last_saved_payload = context.user_data.get("last_saved_payload")
+            if last_saved_payload:
+                await q.edit_message_text(
+                    "✅ Data sudah tersimpan sebelumnya. "
+                    "Silakan ketik /menu atau pilih aksi lanjutan di pesan terakhir."
+                )
+            else:
+                await q.edit_message_text("⚠️ Data tidak ditemukan. Ketik /menu untuk ulang.")
             return
 
         if not GS_WEBAPP_URL:
@@ -1158,9 +1229,33 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         try:
+            duplicate_ref = find_duplicate_ref_from_sheet(
+                str(payload.get("segment", "") or ""),
+                str(payload.get("jenis_order", "") or ""),
+                str(payload.get("tiket_no", "") or ""),
+                str(payload.get("order_no", "") or ""),
+            )
+        except Exception as dup_err:
+            await q.edit_message_text(
+                f"⚠️ Gagal validasi duplikasi dari Spreadsheet: {dup_err}\n"
+                "Periksa Apps Script action=check_duplicate lalu coba lagi.",
+            )
+            return
+        if duplicate_ref:
+            ref_type, ref_value = duplicate_ref
+            label = "Tiket No" if ref_type == "tiket_no" else "Order No"
+            await q.edit_message_text(
+                f"⚠️ {label} `{ref_value}` sudah pernah diinput. "
+                "Silakan cek data atau ketik /menu untuk input baru.",
+                parse_mode="Markdown",
+            )
+            return
+
+        try:
             r = requests.post(GS_WEBAPP_URL, json=payload, timeout=15)
             if r.status_code == 200:
                 save_job_credits(payload)
+                context.user_data["last_saved_payload"] = dict(payload)
                 context.user_data["last_saved_segment"] = payload.get("segment", "")
                 context.user_data["last_saved_order"] = payload.get("jenis_order", "")
                 context.user_data["last_saved_page"] = int(context.user_data.get("form_page", 0) or 0)
@@ -1368,6 +1463,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
