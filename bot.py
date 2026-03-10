@@ -273,7 +273,7 @@ ORDER_MAN_HOURS = {
     "PSB Indihome": 5.3,
     "REPLACEMENT ONT Premium/Dual Band": 1.33,
     "REPLACEMENT STB": 1.33,
-    "UPSELLING MO":1.1,
+    "UPSELLING MO": 1.1,
     "Tiket FFG Indihome": 2.0,
     "Survey PT2": 1.5,
     "Progress PT2": 2.0,
@@ -1381,6 +1381,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
