@@ -7,7 +7,6 @@ from datetime import datetime
 import requests
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.helpers import escape_markdown
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -150,7 +149,6 @@ SEGMENT_ORDERS = {
         "Survey PT2",
         "Progress PT2",
         "REPLACEMENT STB",
-        "UPSELLING MO",
         "Tiket FFG Indihome",
     ],
 }
@@ -273,7 +271,6 @@ ORDER_MAN_HOURS = {
     "PSB Indihome": 5.3,
     "REPLACEMENT ONT Premium/Dual Band": 1.33,
     "REPLACEMENT STB": 1.33,
-    "UPSELLING MO": 1.1,
     "Tiket FFG Indihome": 2.0,
     "Survey PT2": 1.5,
     "Progress PT2": 2.0,
@@ -894,26 +891,23 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
 
     context.user_data["pending_payload"] = payload
 
-    def md(value: str) -> str:
-        return escape_markdown(str(value or ""), version=1)
-
     summary = (
         "📋 **MOHON KONFIRMASI DATA**\n\n"
-        f"**Segment:** {md(segment)}\n"
-        f"**Jenis Order:** {md(jenis_order)}\n\n"
-        f"service no: {md(payload['service_no'])}\n"
-        f"tiket no: {md(payload['tiket_no'])}\n"
-        f"order no: {md(payload['order_no'])}\n"
-        f"datek ODP: {md(payload.get('datek_odp') or '-')}\n"
-        f"teknisi 1: {md(payload.get('nama_teknisi_1',''))} ({md(payload.get('labor_code_teknisi_1',''))})\n"
-        f"teknisi 2: {md(payload.get('nama_teknisi_2') or '-')} ({md(payload.get('labor_code_teknisi_2') or '-')})\n"
-        f"tanggal jam start: {md(raw_start_dt)}\n"
-        f"tanggal jam close: {md(raw_close_dt)}\n"
-        f"workzone: {md(payload['workzone'])}\n\n"
+        f"**Segment:** {segment}\n"
+        f"**Jenis Order:** {jenis_order}\n\n"
+        f"service no: {payload['service_no']}\n"
+        f"tiket no: {payload['tiket_no']}\n"
+        f"order no: {payload['order_no']}\n"
+        f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
+        f"teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
+        f"teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
+        f"tanggal jam start: {raw_start_dt}\n"
+        f"tanggal jam close: {raw_close_dt}\n"
+        f"workzone: {payload['workzone']}\n\n"
         f"bobot/man-hours order: {payload['man_hours_order']:.2f}\n\n"
         "Apakah data ini sudah benar?"
     )
-    
+
     await bot.send_message(
         chat_id=chat_id,
         text=summary,
@@ -1381,9 +1375,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
 
 
