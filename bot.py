@@ -3,16 +3,10 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
-import logging
-import atexit
-import fcntl
 from datetime import datetime
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.error import BadRequest, Conflict
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -29,37 +23,6 @@ GS_CAPAIAN_URL = os.getenv("GS_CAPAIAN_URL", GS_WEBAPP_URL)
 PAGE_SIZE = 8
 TECH_PAGE_SIZE = 10
 DB_PATH = os.getenv("BOT_DB_PATH", "bot_data.db")
-BOT_LOCK_PATH = os.getenv("BOT_LOCK_PATH", "/tmp/sirekap_v2_bot.lock")
-
-logging.basicConfig(
-    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
-    level=logging.INFO,
-)
-logger = logging.getLogger(__name__)
-
-HTTP_TIMEOUT = (8, 20)
-HTTP_RETRY_TOTAL = 3
-
-_bot_lock_handle = None
-
-def _build_http_session() -> requests.Session:
-    session = requests.Session()
-    retry = Retry(
-        total=HTTP_RETRY_TOTAL,
-        connect=HTTP_RETRY_TOTAL,
-        read=HTTP_RETRY_TOTAL,
-        backoff_factor=0.7,
-        status_forcelist=(429, 500, 502, 503, 504),
-        allowed_methods=frozenset(["GET", "POST"]),
-        raise_on_status=False,
-    )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    return session
-
-
-HTTP_SESSION = _build_http_session()
 
 
 # ===================== DATA: SEGMENT -> JENIS ORDER =====================
@@ -464,16 +427,15 @@ def get_monthly_summary_from_sheet(labor_code: str, month_key: str) -> tuple:
             "Gunakan URL deployment Web App yang berakhiran /exec."
         )
 
-    resp = HTTP_SESSION.get(
+    resp = requests.get(
         source_url,
         params={
             "action": "capaian",
             "labor_code": labor_code,
             "month": month_key,
         },
-        headers={"Accept": "application/json"},
         allow_redirects=True,
-        timeout=HTTP_TIMEOUT,
+        timeout=20,
     )
     resp.raise_for_status()
 
@@ -823,60 +785,6 @@ def tech_unit_keyboard(target_field: str, segment: str, allow_none: bool = False
     return InlineKeyboardMarkup(rows)
 
 
-async def safe_edit_message(q, text: str, **kwargs):
-    """Edit callback message but ignore harmless 'message is not modified' errors."""
-    try:
-        await q.edit_message_text(text, **kwargs)
-    except BadRequest as e:
-        if "Message is not modified" in str(e):
-            logger.info("Skip edit_message_text: content unchanged for callback_data=%s", q.data)
-            return
-        raise
-
-
-async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE):
-    err = context.error
-    if isinstance(err, Conflict):
-        logger.error(
-            "Telegram getUpdates conflict: terdeteksi instance bot lain memakai token yang sama. "
-            "Pastikan hanya satu bot polling yang berjalan.",
-            exc_info=err,
-        )
-        return
-
-    if isinstance(err, BadRequest) and "Message is not modified" in str(err):
-        logger.info("Ignored BadRequest 'Message is not modified'.")
-        return
-
-    logger.exception("Unhandled exception while processing update", exc_info=err)
-
-
-def acquire_bot_lock_or_exit():
-    """Prevent running more than one local polling process for the same bot."""
-    global _bot_lock_handle
-
-    _bot_lock_handle = open(BOT_LOCK_PATH, "w")
-    try:
-        fcntl.flock(_bot_lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError as e:
-        raise RuntimeError(
-            "Bot instance lain sudah berjalan (lock aktif). Hentikan proses lama agar tidak konflik getUpdates."
-        ) from e
-
-    _bot_lock_handle.write(str(os.getpid()))
-    _bot_lock_handle.flush()
-
-    def _release_lock():
-        try:
-            if _bot_lock_handle:
-                fcntl.flock(_bot_lock_handle.fileno(), fcntl.LOCK_UN)
-                _bot_lock_handle.close()
-        except Exception:
-            pass
-
-    atexit.register(_release_lock)
-
-
 def tech_list_keyboard(unit: str, target_field: str, page: int = 0):
     techs = TECH_UNITS.get(unit, [])
     total = len(techs)
@@ -1131,7 +1039,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if q.data.startswith("TECH_UNIT|"):
         _, unit, target = q.data.split("|", 2)
         context.user_data["last_tech_unit"] = unit  # untuk tombol back
-        await safe_edit_message(q, 
+        await q.edit_message_text(
             f"Pilih **Teknisi** dari unit **{unit}** (Hal 1):",
             reply_markup=tech_list_keyboard(unit, target, page=0),
             parse_mode="Markdown",
@@ -1144,7 +1052,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total = len(TECH_UNITS.get(unit, []))
         max_page = (total - 1) // TECH_PAGE_SIZE if total else 0
         page = max(0, min(page, max_page))
-        await safe_edit_message(q, 
+        await q.edit_message_text(
             f"Pilih **Teknisi** dari unit **{unit}** (Hal {page+1}/{max_page+1}):",
             reply_markup=tech_list_keyboard(unit, target, page=page),
             parse_mode="Markdown",
@@ -1154,7 +1062,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if q.data.startswith("TECH_BACK|"):
         _, target = q.data.split("|", 1)
         # balik ke menu unit (yang sesuai segment)
-        await safe_edit_message(q, 
+        await q.edit_message_text(
             "Pilih **Unit Teknisi**:",
             reply_markup=tech_unit_keyboard(
                 target,
@@ -1188,9 +1096,9 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if q.data == "CONFIRM_EDIT":
         fields = context.user_data.get("form_fields", [])
         if not fields:
-            await safe_edit_message(q, "⚠️ Data form tidak ditemukan. Ketik /menu untuk mulai ulang.")
+            await q.edit_message_text("⚠️ Data form tidak ditemukan. Ketik /menu untuk mulai ulang.")
             return
-        await safe_edit_message(q, 
+        await q.edit_message_text(
             "Pilih bagian data yang ingin diubah:",
             reply_markup=edit_fields_keyboard(fields),
         )
@@ -1200,7 +1108,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _, field = q.data.split("|", 1)
         fields = context.user_data.get("form_fields", [])
         if field not in fields:
-            await safe_edit_message(q, "⚠️ Field tidak valid. Ketik /menu untuk mulai ulang.")
+            await q.edit_message_text("⚠️ Field tidak valid. Ketik /menu untuk mulai ulang.")
             return
 
         ans = context.user_data.get("form_answers", {})
@@ -1210,14 +1118,14 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ans.pop(f"{f}_name", None)
 
         context.user_data["form_step"] = start_idx
-        await safe_edit_message(q, "✏️ Oke, kita lanjut perbaiki data dari bagian tersebut.")
+        await q.edit_message_text("✏️ Oke, kita lanjut perbaiki data dari bagian tersebut.")
         await ask_next_question(q.message.chat_id, context, context.bot)
         return
 
     if q.data == "EDIT_BACK_CONFIRM":
         payload = context.user_data.get("pending_payload")
         if not payload:
-            await safe_edit_message(q, "⚠️ Ringkasan data tidak ditemukan. Ketik /menu untuk ulang.")
+            await q.edit_message_text("⚠️ Ringkasan data tidak ditemukan. Ketik /menu untuk ulang.")
             return
 
         summary = (
@@ -1236,69 +1144,62 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"bobot/man-hours order: {payload.get('man_hours_order', 0):.2f}\n\n"
             "Apakah data ini sudah benar?"
         )
-        await safe_edit_message(q, summary, reply_markup=confirm_keyboard(), parse_mode="Markdown")
+        await q.edit_message_text(summary, reply_markup=confirm_keyboard(), parse_mode="Markdown")
         return
 
     if q.data == "CONFIRM_SAVE":
         payload = context.user_data.get("pending_payload")
         if not payload:
-            await safe_edit_message(q, "⚠️ Data tidak ditemukan. Ketik /menu untuk ulang.")
+            await q.edit_message_text("⚠️ Data tidak ditemukan. Ketik /menu untuk ulang.")
             return
 
         if not GS_WEBAPP_URL:
-            await safe_edit_message(q, "⚠️ GS_WEBAPP_URL belum diset di environment.")
+            await q.edit_message_text("⚠️ GS_WEBAPP_URL belum diset di environment.")
             return
-
-        def mark_saved_and_build_recap() -> str:
-            save_job_credits(payload)
-            context.user_data["last_saved_segment"] = payload.get("segment", "")
-            context.user_data["last_saved_order"] = payload.get("jenis_order", "")
-            context.user_data["last_saved_page"] = int(context.user_data.get("form_page", 0) or 0)
-            return (
-                "✅ **Data BERHASIL disimpan ke Google Sheet.**\n\n"
-                "📌 **Ringkasan data:**\n"
-                f"- Segment: {payload.get('segment','')}\n"
-                f"- Jenis Order: {payload.get('jenis_order','')}\n"
-                f"- Service No: {payload.get('service_no','')}\n"
-                f"- Tiket No: {(payload.get('tiket_no') or '-')}\n"
-                f"- Order No: {(payload.get('order_no') or '-')}\n"
-                f"- Datek ODP: {(payload.get('datek_odp') or '-')}\n"
-                f"- Teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
-                f"- Teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
-                f"- Start: {payload.get('start_dt','')}\n"
-                f"- Close: {payload.get('close_dt','')}\n"
-                f"- Workzone: {payload.get('workzone','')}\n\n"
-                f"- Bobot/MH Order: {payload.get('man_hours_order', 0):.2f}\n\n"
-                "Pilih aksi berikut untuk lanjut."
-            )
 
         try:
             r = requests.post(GS_WEBAPP_URL, json=payload, timeout=15)
             if r.status_code == 200:
-                recap = mark_saved_and_build_recap()
-                await safe_edit_message(q, recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
+                save_job_credits(payload)
+                context.user_data["last_saved_segment"] = payload.get("segment", "")
+                context.user_data["last_saved_order"] = payload.get("jenis_order", "")
+                context.user_data["last_saved_page"] = int(context.user_data.get("form_page", 0) or 0)
+                recap = (
+                    "✅ **Data BERHASIL disimpan ke Google Sheet.**\n\n"
+                    "📌 **Ringkasan data:**\n"
+                    f"- Segment: {payload.get('segment','')}\n"
+                    f"- Jenis Order: {payload.get('jenis_order','')}\n"
+                    f"- Service No: {payload.get('service_no','')}\n"
+                    f"- Tiket No: {(payload.get('tiket_no') or '-')}\n"
+                    f"- Order No: {(payload.get('order_no') or '-')}\n"
+                    f"- Datek ODP: {(payload.get('datek_odp') or '-')}\n"
+                    f"- Teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
+                    f"- Teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
+                    f"- Start: {payload.get('start_dt','')}\n"
+                    f"- Close: {payload.get('close_dt','')}\n"
+                    f"- Workzone: {payload.get('workzone','')}\n\n"
+                    f"- Bobot/MH Order: {payload.get('man_hours_order', 0):.2f}\n\n"
+                    "Pilih aksi berikut untuk lanjut."
+                )
+                await q.edit_message_text(recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
             else:
-                await safe_edit_message(q, f"⚠️ Gagal simpan ke Google Sheet (HTTP {r.status_code}).")
-
-        except requests.exceptions.ReadTimeout:
-            recap = mark_saved_and_build_recap()
-            recap += "\n\nℹ️ Untuk memastikan data benar benar tersimpan silahkan gunakan /capaian untuk melihat perubahannya"
-            await safe_edit_message(q, recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
+                await q.edit_message_text(f"⚠️ Gagal simpan ke Google Sheet (HTTP {r.status_code}).")
 
         except Exception as e:
-            await safe_edit_message(q, f"⚠️ Error kirim data: {e}")
+            await q.edit_message_text(f"⚠️ Error kirim data: {e}")
+
         clear_form(context)
         return
 
     if q.data == "CONFIRM_CANCEL":
         clear_form(context)
-        await safe_edit_message(q, "❌ Input dibatalkan. Ketik /menu untuk mulai ulang.")
+        await q.edit_message_text("❌ Input dibatalkan. Ketik /menu untuk mulai ulang.")
         return
 
     # ---- CANCEL / HOME ----
     if q.data == "CANCEL_FORM":
         clear_form(context)
-        await safe_edit_message(q, "✅ Input dibatalkan. Ketik /menu untuk mulai lagi.")
+        await q.edit_message_text("✅ Input dibatalkan. Ketik /menu untuk mulai lagi.")
         return
 
     if q.data == "POST_SAME":
@@ -1306,12 +1207,12 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         jenis_order = context.user_data.get("last_saved_order", "")
         page = int(context.user_data.get("last_saved_page", 0) or 0)
         if not segment or not jenis_order:
-            await safe_edit_message(q, "⚠️ Data order terakhir tidak ditemukan. Ketik /menu untuk mulai.")
+            await q.edit_message_text("⚠️ Data order terakhir tidak ditemukan. Ketik /menu untuk mulai.")
             return
 
         start_form(context, segment, jenis_order, page)
         context.user_data["telegram_user_id"] = update.effective_user.id if update.effective_user else ""
-        await safe_edit_message(q, 
+        await q.edit_message_text(
             f"✅ Lanjut input order yang sama:\nSegment: {segment}\nJenis Order: {jenis_order}\n\n"
             f"{build_field_guide(context.user_data['form_fields'])}",
             parse_mode="Markdown",
@@ -1321,7 +1222,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if q.data == "POST_NEW":
         clear_form(context)
-        await safe_edit_message(q, 
+        await q.edit_message_text(
             "Silakan pilih **Segment**:",
             reply_markup=segment_keyboard(),
             parse_mode="Markdown",
@@ -1330,7 +1231,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if q.data == "HOME":
         clear_form(context)
-        await safe_edit_message(q, 
+        await q.edit_message_text(
             "Silakan pilih **Segment**:",
             reply_markup=segment_keyboard(),
             parse_mode="Markdown",
@@ -1344,7 +1245,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total = len(SEGMENT_ORDERS.get(segment, []))
         max_page = (total - 1) // PAGE_SIZE if total else 0
         text = f"**Segment:** {segment}\nPilih Jenis Order (Hal {page+1}/{max_page+1})"
-        await safe_edit_message(q, text, reply_markup=orders_keyboard(segment, page), parse_mode="Markdown")
+        await q.edit_message_text(text, reply_markup=orders_keyboard(segment, page), parse_mode="Markdown")
         return
 
     # ---- ORDER pick ----
@@ -1355,7 +1256,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         orders = SEGMENT_ORDERS.get(segment, [])
         if not (0 <= idx < len(orders)):
-            await safe_edit_message(q, "Pilihan order tidak valid. Ketik /menu untuk ulang.")
+            await q.edit_message_text("Pilihan order tidak valid. Ketik /menu untuk ulang.")
             return
 
         jenis_order = orders[idx]
@@ -1363,7 +1264,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         context.user_data["telegram_user_id"] = update.effective_user.id if update.effective_user else ""
 
-        await safe_edit_message(q, 
+        await q.edit_message_text(
             f"✅ Dipilih:\n"
             f"Segment: {segment}\n"
             f"Jenis Order: {jenis_order}\n\n"
@@ -1450,7 +1351,6 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     if not TOKEN:
         raise RuntimeError("BOT_TOKEN belum di-set di environment.")
-    acquire_bot_lock_or_exit()
     init_db()
     app = Application.builder().token(TOKEN).build()
 
@@ -1461,11 +1361,12 @@ def main():
     app.add_handler(CommandHandler("capaian", capaian_cmd))
     app.add_handler(CallbackQueryHandler(on_click))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
-    app.add_error_handler(on_error)
 
     print("✅ Bot sedang berjalan... tekan Ctrl+C untuk berhenti.")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling()
 
 
 if __name__ == "__main__":
     main()
+
+
