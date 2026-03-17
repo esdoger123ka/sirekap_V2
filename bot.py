@@ -8,6 +8,8 @@ import atexit
 import fcntl
 from datetime import datetime
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import BadRequest, Conflict
@@ -35,7 +37,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+HTTP_TIMEOUT = (8, 20)
+HTTP_RETRY_TOTAL = 3
+
 _bot_lock_handle = None
+
+def _build_http_session() -> requests.Session:
+    session = requests.Session()
+    retry = Retry(
+        total=HTTP_RETRY_TOTAL,
+        connect=HTTP_RETRY_TOTAL,
+        read=HTTP_RETRY_TOTAL,
+        backoff_factor=0.7,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset(["GET", "POST"]),
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
+
+HTTP_SESSION = _build_http_session()
 
 
 # ===================== DATA: SEGMENT -> JENIS ORDER =====================
@@ -440,15 +464,16 @@ def get_monthly_summary_from_sheet(labor_code: str, month_key: str) -> tuple:
             "Gunakan URL deployment Web App yang berakhiran /exec."
         )
 
-    resp = requests.get(
+    resp = HTTP_SESSION.get(
         source_url,
         params={
             "action": "capaian",
             "labor_code": labor_code,
             "month": month_key,
         },
+        headers={"Accept": "application/json"},
         allow_redirects=True,
-        timeout=20,
+        timeout=HTTP_TIMEOUT,
     )
     resp.raise_for_status()
 
