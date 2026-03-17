@@ -288,6 +288,7 @@ ORDER_MAN_HOURS = {
     "PSB OLO": 6.3,
     "PSB DATIN": 6.3,
     "PSB WIFI": 6.3,
+    "Dismantling NTE B2B": 0.67,
     "Tiket FFG DATIN": 2.0,
     "Tiket FFG HSI": 2.0,
     "Tiket FFG WIFI": 2.0,
