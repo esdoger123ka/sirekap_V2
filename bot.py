@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import asyncio
 import re
 import sqlite3
 import logging
@@ -289,7 +288,6 @@ ORDER_MAN_HOURS = {
     "PSB OLO": 6.3,
     "PSB DATIN": 6.3,
     "PSB WIFI": 6.3,
-    "Dismantling NTE B2B": 0.67,
     "Tiket FFG DATIN": 2.0,
     "Tiket FFG HSI": 2.0,
     "Tiket FFG WIFI": 2.0,
@@ -1006,7 +1004,7 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         chat_id=chat_id,
         text=summary,
         reply_markup=confirm_keyboard(),
-        parse_mode="None",
+        parse_mode="Markdown",
     )
 
 
@@ -1089,20 +1087,12 @@ async def capaian_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source_label = "Google Sheet"
     sheet_error = ""
     try:
-        (total_job, total_mh), detail_rows = await asyncio.to_thread(
-            get_monthly_summary_from_sheet,
-            labor_code,
-            month_key,
-        )
+        (total_job, total_mh), detail_rows = get_monthly_summary_from_sheet(labor_code, month_key)
     except Exception as e:
         # fallback aman ke database lokal jika endpoint sheet belum siap/error
         source_label = "Database Lokal (fallback)"
         sheet_error = str(e)
-        (total_job, total_mh), detail_rows = await asyncio.to_thread(
-            get_monthly_summary,
-            labor_code,
-            month_key,
-        )
+        (total_job, total_mh), detail_rows = get_monthly_summary(labor_code, month_key)
 
     if total_job == 0:
         msg = (
@@ -1135,10 +1125,7 @@ async def capaian_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===================== BUTTON HANDLER =====================
 async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    try:
-        await q.answer()
-    except BadRequest as e:
-        logger.warning("Callback query already expired/invalid: %s", e)
+    await q.answer()
 
     # ---- TECH flow ----
     if q.data.startswith("TECH_UNIT|"):
@@ -1249,7 +1236,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"bobot/man-hours order: {payload.get('man_hours_order', 0):.2f}\n\n"
             "Apakah data ini sudah benar?"
         )
-        await safe_edit_message(q, summary, reply_markup=confirm_keyboard(), parse_mode=None)
+        await safe_edit_message(q, summary, reply_markup=confirm_keyboard(), parse_mode="Markdown")
         return
 
     if q.data == "CONFIRM_SAVE":
@@ -1289,14 +1276,14 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             r = requests.post(GS_WEBAPP_URL, json=payload, timeout=15)
             if r.status_code == 200:
                 recap = mark_saved_and_build_recap()
-                await safe_edit_message(q, recap, parse_mode=None, reply_markup=post_save_keyboard())
+                await safe_edit_message(q, recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
             else:
                 await safe_edit_message(q, f"⚠️ Gagal simpan ke Google Sheet (HTTP {r.status_code}).")
 
         except requests.exceptions.ReadTimeout:
             recap = mark_saved_and_build_recap()
             recap += "\n\nℹ️ Untuk memastikan data benar benar tersimpan silahkan gunakan /capaian untuk melihat perubahannya"
-            await safe_edit_message(q, recap, parse_mode=None, reply_markup=post_save_keyboard())
+            await safe_edit_message(q, recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
 
         except Exception as e:
             await safe_edit_message(q, f"⚠️ Error kirim data: {e}")
@@ -1404,21 +1391,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = (update.message.text or "").strip()
 
-    step = int(context.user_data.get("form_step", 0) or 0)
-    fields = context.user_data.get("form_fields", [])
-    if not fields:
-        clear_form(context)
-        await update.message.reply_text("Sesi input sudah tidak valid. Ketik /menu untuk mulai ulang.")
-        return
-
-    if step < 0:
-        step = 0
-        context.user_data["form_step"] = 0
-
-    if step >= len(fields):
-        await finish_form(update.effective_chat.id, context, context.bot)
-        return
-
+    step = context.user_data["form_step"]
+    fields = context.user_data["form_fields"]
     field = fields[step]
 
     segment = context.user_data.get("form_segment", "")
