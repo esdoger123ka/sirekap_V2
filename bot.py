@@ -35,6 +35,8 @@ logging.basicConfig(
     format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
     level=logging.INFO,
 )
+# Hindari log request httpx yang menampilkan URL API Telegram (berisi bot token).
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 HTTP_TIMEOUT = (8, 20)
@@ -837,10 +839,9 @@ async def safe_edit_message(q, text: str, **kwargs):
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE):
     err = context.error
     if isinstance(err, Conflict):
-        logger.error(
+        logger.warning(
             "Telegram getUpdates conflict: terdeteksi instance bot lain memakai token yang sama. "
-            "Pastikan hanya satu bot polling yang berjalan.",
-            exc_info=err,
+            "Pastikan hanya satu bot polling yang berjalan."
         )
         return
 
