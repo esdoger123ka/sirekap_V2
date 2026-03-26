@@ -571,6 +571,7 @@ TECH_UNITS = {
         {"name": "MUHAMMAD SYAMSUL BAHRI", "labor": "21970031"},
         {"name": "NOVA MUCHLIS", "labor": "18870084"},
         {"name": "PUJI SANTOSO", "labor": "18820045"},
+        {"name": "DODO ROHYANDI", "labor": "15893687"},
         {"name": "RENGGI NUGRAHA", "labor": "20940711"},
         {"name": "RIFKY FAJAR F", "labor": "25970117"},
         {"name": "RISMAN FAUZI", "labor": "18940108"},
