@@ -604,6 +604,8 @@ TECH_UNITS = {
     "Maintenance & External": [
         {"name": "SUDRAJAT", "labor": "18740021"},
         {"name": "IQBAL", "labor": "20951078"},
+        {"name": "DANI ALFIAN", "labor": "18990056"},
+        {"name": "ERZA GUMILANG PRAKOSO", "labor": "20951078"},
         {"name": "YANTO HERYANTO", "labor": "19810003"},
         {"name": "DUDUNG ALAMSYAH", "labor": "18960355"},
     ],
