@@ -978,9 +978,9 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
     context.user_data["pending_payload"] = payload
 
     summary = (
-        "📋 **MOHON KONFIRMASI DATA**\n\n"
-        f"**Segment:** {segment}\n"
-        f"**Jenis Order:** {jenis_order}\n\n"
+        "📋 MOHON KONFIRMASI DATA\n\n"
+        f"Segment: {segment}\n"
+        f"Jenis Order: {jenis_order}\n\n"
         f"service no: {payload['service_no']}\n"
         f"tiket no: {payload['tiket_no']}\n"
         f"order no: {payload['order_no']}\n"
