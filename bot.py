@@ -998,7 +998,6 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         chat_id=chat_id,
         text=summary,
         reply_markup=confirm_keyboard(),
-        parse_mode="Markdown",
     )
 
 
@@ -1079,23 +1078,25 @@ async def capaian_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     source_label = "Google Sheet"
-    sheet_error = ""
     try:
         (total_job, total_mh), detail_rows = get_monthly_summary_from_sheet(labor_code, month_key)
     except Exception as e:
-        # fallback aman ke database lokal jika endpoint sheet belum siap/error
-        source_label = "Database Lokal (fallback)"
-        sheet_error = str(e)
-        (total_job, total_mh), detail_rows = get_monthly_summary(labor_code, month_key)
+        await update.message.reply_text(
+            "❌ Gagal mengambil data dari Google Spreadsheet.\n"
+            f"Labor Code: *{labor_code}*\n"
+            f"Bulan: *{month_key}*\n"
+            f"Detail error: `{str(e)}`\n\n"
+            "Catatan: perintah /capaian sekarang hanya memakai sumber Google Spreadsheet "
+            "(tanpa fallback database lokal).",
+            parse_mode="Markdown",
+        )
+        return
 
     if total_job == 0:
         msg = (
             f"Belum ada data untuk labor code *{labor_code}* di bulan *{month_key}*.\n"
             f"Sumber data: *{source_label}*"
         )
-        if sheet_error:
-            msg += f"\nCatatan: akses Google Sheet gagal (*{sheet_error}*)."
-
         await update.message.reply_text(msg, parse_mode="Markdown")
         return
 
@@ -1215,9 +1216,9 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         summary = (
-            "📋 **MOHON KONFIRMASI DATA**\n\n"
-            f"**Segment:** {payload.get('segment','')}\n"
-            f"**Jenis Order:** {payload.get('jenis_order','')}\n\n"
+            "📋 MOHON KONFIRMASI DATA\n\n"
+            f"Segment: {payload.get('segment','')}\n"
+            f"Jenis Order: {payload.get('jenis_order','')}\n\n"
             f"service no: {payload.get('service_no','')}\n"
             f"tiket no: {payload.get('tiket_no','')}\n"
             f"order no: {payload.get('order_no','')}\n"
@@ -1230,7 +1231,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"bobot/man-hours order: {payload.get('man_hours_order', 0):.2f}\n\n"
             "Apakah data ini sudah benar?"
         )
-        await safe_edit_message(q, summary, reply_markup=confirm_keyboard(), parse_mode="Markdown")
+        await safe_edit_message(q, summary, reply_markup=confirm_keyboard())
         return
 
     if q.data == "CONFIRM_SAVE":
@@ -1249,8 +1250,8 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["last_saved_order"] = payload.get("jenis_order", "")
             context.user_data["last_saved_page"] = int(context.user_data.get("form_page", 0) or 0)
             return (
-                "✅ **Data BERHASIL disimpan ke Google Sheet.**\n\n"
-                "📌 **Ringkasan data:**\n"
+                "✅ Data BERHASIL disimpan ke Google Sheet.\n\n"
+                "📌 Ringkasan data:\n"
                 f"- Segment: {payload.get('segment','')}\n"
                 f"- Jenis Order: {payload.get('jenis_order','')}\n"
                 f"- Service No: {payload.get('service_no','')}\n"
@@ -1266,22 +1267,73 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Pilih aksi berikut untuk lanjut."
             )
 
+        def build_retry_message(reason: str) -> str:
+            return (
+                "⚠️ Data *belum bisa dipastikan* tersimpan ke Google Sheet.\n"
+                f"Alasan: {reason}\n\n"
+                "Silakan pilih:\n"
+                "- *Ya, simpan* untuk kirim ulang data yang sama\n"
+                "- *Batal* untuk membatalkan input"
+            )
+
         try:
             r = requests.post(GS_WEBAPP_URL, json=payload, timeout=15)
-            if r.status_code == 200:
-                recap = mark_saved_and_build_recap()
-                await safe_edit_message(q, recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
-            else:
-                await safe_edit_message(q, f"⚠️ Gagal simpan ke Google Sheet (HTTP {r.status_code}).")
+            r.raise_for_status()
+
+            body = (r.text or "").strip()
+            if not body:
+                await safe_edit_message(
+                    q,
+                    build_retry_message("respons kosong dari endpoint Google Sheet"),
+                    parse_mode="Markdown",
+                    reply_markup=confirm_keyboard(),
+                )
+                return
+
+            try:
+                payload_resp = r.json()
+            except ValueError:
+                snippet = body.replace("\n", " ")[:180]
+                await safe_edit_message(
+                    q,
+                    build_retry_message(f"respons bukan JSON valid: `{snippet}`"),
+                    parse_mode="Markdown",
+                    reply_markup=confirm_keyboard(),
+                )
+                return
+
+            if not payload_resp.get("ok"):
+                err_msg = str(payload_resp.get("error") or "Apps Script mengembalikan status gagal")
+                await safe_edit_message(
+                    q,
+                    build_retry_message(err_msg),
+                    parse_mode="Markdown",
+                    reply_markup=confirm_keyboard(),
+                )
+                return
+
+            recap = mark_saved_and_build_recap()
+            await safe_edit_message(q, recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
+            clear_form(context)
+            return
 
         except requests.exceptions.ReadTimeout:
-            recap = mark_saved_and_build_recap()
-            recap += "\n\nℹ️ Untuk memastikan data benar benar tersimpan silahkan gunakan /capaian untuk melihat perubahannya"
-            await safe_edit_message(q, recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
+            await safe_edit_message(
+                q,
+                build_retry_message("request timeout saat mengirim ke Google Sheet"),
+                parse_mode="Markdown",
+                reply_markup=confirm_keyboard(),
+            )
+            return
 
         except Exception as e:
-            await safe_edit_message(q, f"⚠️ Error kirim data: {e}")
-        clear_form(context)
+            await safe_edit_message(
+                q,
+                build_retry_message(f"error kirim data: `{e}`"),
+                parse_mode="Markdown",
+                reply_markup=confirm_keyboard(),
+            )
+            return
         return
 
     if q.data == "CONFIRM_CANCEL":
