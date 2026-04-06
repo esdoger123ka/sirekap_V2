@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import os
 import re
 import sqlite3
@@ -42,7 +41,6 @@ logger = logging.getLogger(__name__)
 
 HTTP_TIMEOUT = (8, 20)
 HTTP_RETRY_TOTAL = 3
-GS_LOCK_RETRY_TOTAL = 3
 
 _bot_lock_handle = None
 
@@ -730,35 +728,9 @@ def clear_form(context: ContextTypes.DEFAULT_TYPE):
         "form_answers",
         "form_page",
         "pending_payload",
-        "save_in_progress",
         "last_tech_unit",  # untuk TECH_BACK
     ]:
         context.user_data.pop(k, None)
-
-
-def payload_fingerprint(payload: dict) -> str:
-    """
-    Kunci deduplikasi sederhana untuk mencegah klik SIMPAN ganda
-    mengirim payload identik berkali-kali ke Apps Script.
-    """
-    keys = [
-        "segment",
-        "jenis_order",
-        "service_no",
-        "tiket_no",
-        "order_no",
-        "datek_odp",
-        "labor_code_teknisi_1",
-        "labor_code_teknisi_2",
-        "start_dt",
-        "close_dt",
-        "workzone",
-    ]
-    parts = []
-    for k in keys:
-        v = payload.get(k, "")
-        parts.append(f"{k}={str(v).strip().lower()}")
-    return "|".join(parts)
 
 
 def start_form(context: ContextTypes.DEFAULT_TYPE, segment: str, jenis_order: str, page: int):
@@ -1002,7 +974,6 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         "close_dt": normalize_dt_for_sheet(raw_close_dt),
         "workzone": ans.get("workzone", "").strip(),
     }
-    payload["submission_key"] = payload_fingerprint(payload)
 
     context.user_data["pending_payload"] = payload
 
@@ -1273,27 +1244,11 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_edit_message(q, "⚠️ GS_WEBAPP_URL belum diset di environment.")
             return
 
-        if context.user_data.get("save_in_progress"):
-            await safe_edit_message(q, "⏳ Permintaan simpan sedang diproses. Mohon tunggu sebentar.")
-            return
-
-        fingerprint = payload_fingerprint(payload)
-        if context.user_data.get("last_saved_fingerprint") == fingerprint:
-            await safe_edit_message(
-                q,
-                "ℹ️ Data yang sama terdeteksi sudah tersimpan sebelumnya.\n"
-                "Gunakan tombol *Input lagi order yang sama* jika ingin entri baru.",
-                parse_mode="Markdown",
-                reply_markup=post_save_keyboard(),
-            )
-            return
-
         def mark_saved_and_build_recap() -> str:
             save_job_credits(payload)
             context.user_data["last_saved_segment"] = payload.get("segment", "")
             context.user_data["last_saved_order"] = payload.get("jenis_order", "")
             context.user_data["last_saved_page"] = int(context.user_data.get("form_page", 0) or 0)
-            context.user_data["last_saved_fingerprint"] = fingerprint
             return (
                 "✅ Data BERHASIL disimpan ke Google Sheet.\n\n"
                 "📌 Ringkasan data:\n"
@@ -1321,82 +1276,55 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- *Batal* untuk membatalkan input"
             )
 
-        context.user_data["save_in_progress"] = True
         try:
-            await safe_edit_message(q, "⏳ Sedang menyimpan data ke Google Sheet. Mohon tunggu...")
-            for attempt in range(1, GS_LOCK_RETRY_TOTAL + 1):
-                try:
-                    r = requests.post(
-                        GS_WEBAPP_URL,
-                        json=payload,
-                        timeout=15,
-                        headers={"X-Submission-Key": fingerprint},
-                    )
-                    r.raise_for_status()
-                except requests.exceptions.ReadTimeout:
-                    if attempt < GS_LOCK_RETRY_TOTAL:
-                        await asyncio.sleep(1.2 * attempt)
-                        continue
-                    await safe_edit_message(
-                        q,
-                        build_retry_message("request timeout saat mengirim ke Google Sheet"),
-                        parse_mode="Markdown",
-                        reply_markup=confirm_keyboard(),
-                    )
-                    return
+            r = requests.post(GS_WEBAPP_URL, json=payload, timeout=15)
+            r.raise_for_status()
 
-                body = (r.text or "").strip()
-                if not body:
-                    await safe_edit_message(
-                        q,
-                        build_retry_message("respons kosong dari endpoint Google Sheet"),
-                        parse_mode="Markdown",
-                        reply_markup=confirm_keyboard(),
-                    )
-                    return
-
-                try:
-                    payload_resp = r.json()
-                except ValueError:
-                    snippet = body.replace("\n", " ")[:180]
-                    await safe_edit_message(
-                        q,
-                        build_retry_message(f"respons bukan JSON valid: `{snippet}`"),
-                        parse_mode="Markdown",
-                        reply_markup=confirm_keyboard(),
-                    )
-                    return
-
-                if not payload_resp.get("ok"):
-                    err_msg = str(payload_resp.get("error") or "Apps Script mengembalikan status gagal")
-                    err_norm = err_msg.lower()
-                    if ("lock timeout" in err_norm or "another process was holding the lock" in err_norm) and attempt < GS_LOCK_RETRY_TOTAL:
-                        await asyncio.sleep(1.2 * attempt)
-                        continue
-                    await safe_edit_message(
-                        q,
-                        build_retry_message(err_msg),
-                        parse_mode="Markdown",
-                        reply_markup=confirm_keyboard(),
-                    )
-                    return
-
-                if payload_resp.get("duplicate"):
-                    context.user_data["last_saved_fingerprint"] = fingerprint
-                    await safe_edit_message(
-                        q,
-                        "ℹ️ Data ini sudah pernah disimpan sebelumnya (deduplikasi di server aktif).\n"
-                        "Data baru tidak ditambahkan agar tidak duplikat.",
-                        parse_mode="Markdown",
-                        reply_markup=post_save_keyboard(),
-                    )
-                    clear_form(context)
-                    return
-
-                recap = mark_saved_and_build_recap()
-                await safe_edit_message(q, recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
-                clear_form(context)
+            body = (r.text or "").strip()
+            if not body:
+                await safe_edit_message(
+                    q,
+                    build_retry_message("respons kosong dari endpoint Google Sheet"),
+                    parse_mode="Markdown",
+                    reply_markup=confirm_keyboard(),
+                )
                 return
+
+            try:
+                payload_resp = r.json()
+            except ValueError:
+                snippet = body.replace("\n", " ")[:180]
+                await safe_edit_message(
+                    q,
+                    build_retry_message(f"respons bukan JSON valid: `{snippet}`"),
+                    parse_mode="Markdown",
+                    reply_markup=confirm_keyboard(),
+                )
+                return
+
+            if not payload_resp.get("ok"):
+                err_msg = str(payload_resp.get("error") or "Apps Script mengembalikan status gagal")
+                await safe_edit_message(
+                    q,
+                    build_retry_message(err_msg),
+                    parse_mode="Markdown",
+                    reply_markup=confirm_keyboard(),
+                )
+                return
+
+            recap = mark_saved_and_build_recap()
+            await safe_edit_message(q, recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
+            clear_form(context)
+            return
+
+        except requests.exceptions.ReadTimeout:
+            await safe_edit_message(
+                q,
+                build_retry_message("request timeout saat mengirim ke Google Sheet"),
+                parse_mode="Markdown",
+                reply_markup=confirm_keyboard(),
+            )
+            return
 
         except Exception as e:
             await safe_edit_message(
@@ -1406,9 +1334,8 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=confirm_keyboard(),
             )
             return
-        finally:
-            context.user_data.pop("save_in_progress", None)
         return
+
     if q.data == "CONFIRM_CANCEL":
         clear_form(context)
         await safe_edit_message(q, "❌ Input dibatalkan. Ketik /menu untuk mulai ulang.")
