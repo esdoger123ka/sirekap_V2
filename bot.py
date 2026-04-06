@@ -13,6 +13,7 @@ from urllib3.util.retry import Retry
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import BadRequest, Conflict
+from telegram.helpers import escape_markdown
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -43,6 +44,11 @@ HTTP_TIMEOUT = (8, 20)
 HTTP_RETRY_TOTAL = 3
 
 _bot_lock_handle = None
+
+
+def md(text: object) -> str:
+    """Escape user-provided text so it is safe for Telegram Markdown (legacy)."""
+    return escape_markdown(str(text or ""), version=1)
 
 def _build_http_session() -> requests.Session:
     session = requests.Session()
@@ -979,17 +985,17 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
 
     summary = (
         "📋 **MOHON KONFIRMASI DATA**\n\n"
-        f"**Segment:** {segment}\n"
-        f"**Jenis Order:** {jenis_order}\n\n"
-        f"service no: {payload['service_no']}\n"
-        f"tiket no: {payload['tiket_no']}\n"
-        f"order no: {payload['order_no']}\n"
-        f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
-        f"teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
-        f"teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
-        f"tanggal jam start: {raw_start_dt}\n"
-        f"tanggal jam close: {raw_close_dt}\n"
-        f"workzone: {payload['workzone']}\n\n"
+        f"**Segment:** {md(segment)}\n"
+        f"**Jenis Order:** {md(jenis_order)}\n\n"
+        f"service no: {md(payload['service_no'])}\n"
+        f"tiket no: {md(payload['tiket_no'])}\n"
+        f"order no: {md(payload['order_no'])}\n"
+        f"datek ODP: {md(payload.get('datek_odp') or '-')}\n"
+        f"teknisi 1: {md(payload.get('nama_teknisi_1',''))} ({md(payload.get('labor_code_teknisi_1',''))})\n"
+        f"teknisi 2: {md(payload.get('nama_teknisi_2') or '-')} ({md(payload.get('labor_code_teknisi_2') or '-')})\n"
+        f"tanggal jam start: {md(raw_start_dt)}\n"
+        f"tanggal jam close: {md(raw_close_dt)}\n"
+        f"workzone: {md(payload['workzone'])}\n\n"
         f"bobot/man-hours order: {payload['man_hours_order']:.2f}\n\n"
         "Apakah data ini sudah benar?"
     )
@@ -1216,17 +1222,17 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         summary = (
             "📋 **MOHON KONFIRMASI DATA**\n\n"
-            f"**Segment:** {payload.get('segment','')}\n"
-            f"**Jenis Order:** {payload.get('jenis_order','')}\n\n"
-            f"service no: {payload.get('service_no','')}\n"
-            f"tiket no: {payload.get('tiket_no','')}\n"
-            f"order no: {payload.get('order_no','')}\n"
-            f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
-            f"teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
-            f"teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
-            f"tanggal jam start: {payload.get('start_dt','')}\n"
-            f"tanggal jam close: {payload.get('close_dt','')}\n"
-            f"workzone: {payload.get('workzone','')}\n\n"
+            f"**Segment:** {md(payload.get('segment',''))}\n"
+            f"**Jenis Order:** {md(payload.get('jenis_order',''))}\n\n"
+            f"service no: {md(payload.get('service_no',''))}\n"
+            f"tiket no: {md(payload.get('service_no',''))}\n"
+            f"order no: {md(payload.get('order_no',''))}\n"
+            f"datek ODP: {md(payload.get('order_no','')(payload.get('datek_odp') or '-')}\n"
+            f"teknisi 1: {md(payload.get('nama_teknisi_1',''))} ({md(payload.get('labor_code_teknisi_1',''))})\n"
+            f"teknisi 2: {md(payload.get('nama_teknisi_2') or '-')} ({md(payload.get('labor_code_teknisi_2') or '-')})\n"
+            f"tanggal jam start: {md(payload.get('start_dt',''))}\n"
+            f"tanggal jam close: {md(payload.get('close_dt',''))}\n"
+            f"workzone: {md(payload.get('workzone',''))}\n\n"
             f"bobot/man-hours order: {payload.get('man_hours_order', 0):.2f}\n\n"
             "Apakah data ini sudah benar?"
         )
@@ -1251,17 +1257,17 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return (
                 "✅ **Data BERHASIL disimpan ke Google Sheet.**\n\n"
                 "📌 **Ringkasan data:**\n"
-                f"- Segment: {payload.get('segment','')}\n"
-                f"- Jenis Order: {payload.get('jenis_order','')}\n"
-                f"- Service No: {payload.get('service_no','')}\n"
-                f"- Tiket No: {(payload.get('tiket_no') or '-')}\n"
-                f"- Order No: {(payload.get('order_no') or '-')}\n"
-                f"- Datek ODP: {(payload.get('datek_odp') or '-')}\n"
-                f"- Teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
-                f"- Teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
-                f"- Start: {payload.get('start_dt','')}\n"
-                f"- Close: {payload.get('close_dt','')}\n"
-                f"- Workzone: {payload.get('workzone','')}\n\n"
+                f"- Segment: {md(payload.get('segment',''))}\n"
+                f"- Jenis Order: {md(payload.get('jenis_order',''))}\n"
+                f"- Service No: {md(payload.get('service_no',''))}\n"
+                f"- Tiket No: {md(payload.get('tiket_no') or '-')}\n"
+                f"- Order No: {md(payload.get('order_no') or '-')}\n"
+                f"- Datek ODP: {md(payload.get('datek_odp') or '-')}\n"
+                f"- Teknisi 1: {md(payload.get('nama_teknisi_1',''))} ({md(payload.get('labor_code_teknisi_1',''))})\n"
+                f"- Teknisi 2: {md(payload.get('nama_teknisi_2') or '-')} ({md(payload.get('labor_code_teknisi_2') or '-')})\n"
+                f"- Start: {md(payload.get('start_dt',''))}\n"
+                f"- Close: {md(payload.get('close_dt',''))}\n"
+                f"- Workzone: {md(payload.get('workzone',''))}\n\n"
                 f"- Bobot/MH Order: {payload.get('man_hours_order', 0):.2f}\n\n"
                 "Pilih aksi berikut untuk lanjut."
             )
@@ -1387,6 +1393,10 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     step = context.user_data["form_step"]
     fields = context.user_data["form_fields"]
+    if step >= len(fields):
+        # Guard jika user mengirim teks saat form seharusnya sudah masuk tahap konfirmasi.
+        await finish_form(update.effective_chat.id, context, context.bot)
+        return
     field = fields[step]
 
     segment = context.user_data.get("form_segment", "")
