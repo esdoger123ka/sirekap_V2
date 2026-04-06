@@ -6,8 +6,6 @@ import sqlite3
 import logging
 import atexit
 import fcntl
-import json
-import time
 from datetime import datetime
 import requests
 from requests.adapters import HTTPAdapter
@@ -15,6 +13,7 @@ from urllib3.util.retry import Retry
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import BadRequest, Conflict
+from telegram.helpers import escape_markdown
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -43,13 +42,13 @@ logger = logging.getLogger(__name__)
 
 HTTP_TIMEOUT = (8, 20)
 HTTP_RETRY_TOTAL = 3
-SHEET_FLUSH_INTERVAL_SEC = int(os.getenv("SHEET_FLUSH_INTERVAL_SEC", "3"))
-SHEET_FLUSH_BATCH_SIZE = int(os.getenv("SHEET_FLUSH_BATCH_SIZE", "25"))
-CAPAIAN_CACHE_TTL_SEC = int(os.getenv("CAPAIAN_CACHE_TTL_SEC", "20"))
-CAPAIAN_SOURCE = os.getenv("CAPAIAN_SOURCE", "auto").strip().lower()
 
 _bot_lock_handle = None
-CAPAIAN_CACHE: dict[tuple[str, str], tuple[float, tuple, list]] = {}
+
+
+def md(text: object) -> str:
+    """Escape user-provided text so it is safe for Telegram Markdown (legacy)."""
+    return escape_markdown(str(text or ""), version=1)
 
 def _build_http_session() -> requests.Session:
     session = requests.Session()
@@ -365,27 +364,7 @@ def init_db():
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_job_credits_labor_month ON job_credits (labor_code, month_key)")
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS sheet_outbox (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                attempts INTEGER NOT NULL DEFAULT 0,
-                last_error TEXT
-            )
-            """
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_sheet_outbox_id ON sheet_outbox (id)")
         conn.commit()
-
-
-def invalidate_capaian_cache(payload: dict):
-    month_key = month_key_from_dt(payload.get("close_dt", ""))
-    for labor_field in ("labor_code_teknisi_1", "labor_code_teknisi_2"):
-        labor_code = (payload.get(labor_field) or "").strip()
-        if labor_code:
-            CAPAIAN_CACHE.pop((labor_code, month_key), None)
 
 
 def save_job_credits(payload: dict):
@@ -437,151 +416,6 @@ def save_job_credits(payload: dict):
             rows,
         )
         conn.commit()
-    invalidate_capaian_cache(payload)
-
-
-def enqueue_sheet_payload(payload: dict):
-    with get_conn() as conn:
-        conn.execute(
-            """
-            INSERT INTO sheet_outbox (payload_json, created_at)
-            VALUES (?, ?)
-            """,
-            (json.dumps(payload, ensure_ascii=False), datetime.now().isoformat()),
-        )
-        conn.commit()
-
-
-def _load_outbox_rows(limit: int) -> list[tuple[int, dict]]:
-    with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, payload_json
-            FROM sheet_outbox
-            ORDER BY id ASC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
-    parsed_rows: list[tuple[int, dict]] = []
-    for row_id, payload_json in rows:
-        try:
-            parsed_rows.append((row_id, json.loads(payload_json)))
-        except json.JSONDecodeError:
-            logger.exception("Gagal parse payload outbox id=%s, skip.", row_id)
-    return parsed_rows
-
-
-def _delete_outbox_rows(row_ids: list[int]):
-    if not row_ids:
-        return
-    with get_conn() as conn:
-        conn.executemany("DELETE FROM sheet_outbox WHERE id = ?", [(row_id,) for row_id in row_ids])
-        conn.commit()
-
-
-def _mark_outbox_attempt_failed(row_ids: list[int], err_msg: str):
-    if not row_ids:
-        return
-    with get_conn() as conn:
-        conn.executemany(
-            """
-            UPDATE sheet_outbox
-            SET attempts = attempts + 1, last_error = ?
-            WHERE id = ?
-            """,
-            [(err_msg[:500], row_id) for row_id in row_ids],
-        )
-        conn.commit()
-
-
-def _extract_response_error(resp: requests.Response) -> str:
-    try:
-        payload = resp.json()
-        if isinstance(payload, dict):
-            if payload.get("error"):
-                return str(payload.get("error"))
-            if payload.get("ok") is False:
-                return "Apps Script mengembalikan ok=false."
-    except ValueError:
-        pass
-    snippet = (resp.text or "").strip().replace("\n", " ")
-    return f"HTTP {resp.status_code}, body={snippet[:180]!r}"
-
-
-def _is_success_json_response(resp: requests.Response) -> bool:
-    """
-    Anggap sukses jika:
-    - HTTP 2xx, dan
-    - body JSON kosong/invalid -> fallback ke kompatibilitas lama (anggap sukses),
-      ATAU body JSON memiliki `ok` tidak ada / bernilai true.
-    """
-    if not (200 <= resp.status_code < 300):
-        return False
-    try:
-        payload = resp.json()
-    except ValueError:
-        return True
-    if isinstance(payload, dict) and payload.get("ok") is False:
-        return False
-    return True
-
-
-def flush_sheet_outbox_once(limit: int = SHEET_FLUSH_BATCH_SIZE) -> tuple[int, int]:
-    if not GS_WEBAPP_URL:
-        return (0, 0)
-
-    rows = _load_outbox_rows(limit)
-    if not rows:
-        return (0, 0)
-
-    sent_ids: list[int] = []
-    failed_rows: list[tuple[int, str]] = []
-
-    # Best-effort batch submit; jika web app belum dukung, fallback ke single submit.
-    batch_payload = {"action": "batch_submit", "rows": [payload for _, payload in rows]}
-    try:
-        batch_resp = HTTP_SESSION.post(GS_WEBAPP_URL, json=batch_payload, timeout=HTTP_TIMEOUT)
-        if _is_success_json_response(batch_resp):
-            sent_ids = [row_id for row_id, _ in rows]
-            _delete_outbox_rows(sent_ids)
-            return (len(sent_ids), 0)
-        logger.warning("Batch submit ditolak: %s", _extract_response_error(batch_resp))
-    except requests.RequestException:
-        logger.exception("Batch submit gagal, fallback ke single submit.")
-
-    for row_id, payload in rows:
-        try:
-            resp = HTTP_SESSION.post(GS_WEBAPP_URL, json=payload, timeout=HTTP_TIMEOUT)
-            if _is_success_json_response(resp):
-                sent_ids.append(row_id)
-            else:
-                failed_rows.append((row_id, _extract_response_error(resp)))
-        except requests.RequestException as err:
-            failed_rows.append((row_id, str(err)))
-
-    _delete_outbox_rows(sent_ids)
-    if failed_rows:
-        _mark_outbox_attempt_failed([row_id for row_id, _ in failed_rows], failed_rows[0][1])
-    return (len(sent_ids), len(failed_rows))
-
-
-def get_outbox_pending_count() -> int:
-    with get_conn() as conn:
-        row = conn.execute("SELECT COUNT(*) FROM sheet_outbox").fetchone()
-    return int(row[0] or 0)
-
-
-def get_cached_monthly_summary(labor_code: str, month_key: str) -> tuple[tuple, list]:
-    now_ts = time.time()
-    cache_key = (labor_code, month_key)
-    cached = CAPAIAN_CACHE.get(cache_key)
-    if cached and cached[0] > now_ts:
-        return cached[1], cached[2]
-
-    total_row, detail_rows = get_monthly_summary(labor_code, month_key)
-    CAPAIAN_CACHE[cache_key] = (now_ts + CAPAIAN_CACHE_TTL_SEC, total_row, detail_rows)
-    return total_row, detail_rows
 
 
 def _is_month_arg(text: str) -> bool:
@@ -1151,17 +985,17 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
 
     summary = (
         "📋 **MOHON KONFIRMASI DATA**\n\n"
-        f"**Segment:** {segment}\n"
-        f"**Jenis Order:** {jenis_order}\n\n"
-        f"service no: {payload['service_no']}\n"
-        f"tiket no: {payload['tiket_no']}\n"
-        f"order no: {payload['order_no']}\n"
-        f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
-        f"teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
-        f"teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
-        f"tanggal jam start: {raw_start_dt}\n"
-        f"tanggal jam close: {raw_close_dt}\n"
-        f"workzone: {payload['workzone']}\n\n"
+        f"**Segment:** {md(segment)}\n"
+        f"**Jenis Order:** {md(jenis_order)}\n\n"
+        f"service no: {md(payload['service_no'])}\n"
+        f"tiket no: {md(payload['tiket_no'])}\n"
+        f"order no: {md(payload['order_no'])}\n"
+        f"datek ODP: {md(payload.get('datek_odp') or '-')}\n"
+        f"teknisi 1: {md(payload.get('nama_teknisi_1',''))} ({md(payload.get('labor_code_teknisi_1',''))})\n"
+        f"teknisi 2: {md(payload.get('nama_teknisi_2') or '-')} ({md(payload.get('labor_code_teknisi_2') or '-')})\n"
+        f"tanggal jam start: {md(raw_start_dt)}\n"
+        f"tanggal jam close: {md(raw_close_dt)}\n"
+        f"workzone: {md(payload['workzone'])}\n\n"
         f"bobot/man-hours order: {payload['man_hours_order']:.2f}\n\n"
         "Apakah data ini sudah benar?"
     )
@@ -1250,22 +1084,15 @@ async def capaian_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    source_label = "Database Lokal (real-time)"
+    source_label = "Google Sheet"
     sheet_error = ""
-    result = None
-
-    if CAPAIAN_SOURCE in {"auto", "sheet"} and GS_CAPAIAN_URL:
-        try:
-            result = get_monthly_summary_from_sheet(labor_code, month_key)
-            source_label = "Google Sheet"
-        except Exception as err:
-            sheet_error = str(err)
-
-    if result is None:
-        result = get_cached_monthly_summary(labor_code, month_key)
-        source_label = "Database Lokal (real-time)"
-
-    (total_job, total_mh), detail_rows = result
+    try:
+        (total_job, total_mh), detail_rows = get_monthly_summary_from_sheet(labor_code, month_key)
+    except Exception as e:
+        # fallback aman ke database lokal jika endpoint sheet belum siap/error
+        source_label = "Database Lokal (fallback)"
+        sheet_error = str(e)
+        (total_job, total_mh), detail_rows = get_monthly_summary(labor_code, month_key)
 
     if total_job == 0:
         msg = (
@@ -1273,7 +1100,8 @@ async def capaian_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Sumber data: *{source_label}*"
         )
         if sheet_error:
-            msg += f"\nCatatan sinkronisasi sheet: `{sheet_error[:180]}`"
+            msg += f"\nCatatan: akses Google Sheet gagal (*{sheet_error}*)."
+
         await update.message.reply_text(msg, parse_mode="Markdown")
         return
 
@@ -1290,9 +1118,6 @@ async def capaian_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for jenis_order, job_count, mh_sum in detail_rows[:20]:
         lines.append(f"- {jenis_order}: {job_count} job / {mh_sum:.2f} MH")
-    if sheet_error and source_label != "Google Sheet":
-        lines.append("")
-        lines.append(f"⚠️ Catatan sinkronisasi sheet: `{sheet_error[:180]}`")
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
@@ -1397,17 +1222,17 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         summary = (
             "📋 **MOHON KONFIRMASI DATA**\n\n"
-            f"**Segment:** {payload.get('segment','')}\n"
-            f"**Jenis Order:** {payload.get('jenis_order','')}\n\n"
-            f"service no: {payload.get('service_no','')}\n"
-            f"tiket no: {payload.get('tiket_no','')}\n"
-            f"order no: {payload.get('order_no','')}\n"
-            f"datek ODP: {(payload.get('datek_odp') or '-')}\n"
-            f"teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
-            f"teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
-            f"tanggal jam start: {payload.get('start_dt','')}\n"
-            f"tanggal jam close: {payload.get('close_dt','')}\n"
-            f"workzone: {payload.get('workzone','')}\n\n"
+            f"**Segment:** {md(payload.get('segment',''))}\n"
+            f"**Jenis Order:** {md(payload.get('jenis_order',''))}\n\n"
+            f"service no: {md(payload.get('service_no',''))}\n"
+            f"tiket no: {md(payload.get('service_no',''))}\n"
+            f"order no: {md(payload.get('order_no',''))}\n"
+            f"datek ODP: {md(payload.get('order_no','')(payload.get('datek_odp') or '-')}\n"
+            f"teknisi 1: {md(payload.get('nama_teknisi_1',''))} ({md(payload.get('labor_code_teknisi_1',''))})\n"
+            f"teknisi 2: {md(payload.get('nama_teknisi_2') or '-')} ({md(payload.get('labor_code_teknisi_2') or '-')})\n"
+            f"tanggal jam start: {md(payload.get('start_dt',''))}\n"
+            f"tanggal jam close: {md(payload.get('close_dt',''))}\n"
+            f"workzone: {md(payload.get('workzone',''))}\n\n"
             f"bobot/man-hours order: {payload.get('man_hours_order', 0):.2f}\n\n"
             "Apakah data ini sudah benar?"
         )
@@ -1420,39 +1245,46 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_edit_message(q, "⚠️ Data tidak ditemukan. Ketik /menu untuk ulang.")
             return
 
+        if not GS_WEBAPP_URL:
+            await safe_edit_message(q, "⚠️ GS_WEBAPP_URL belum diset di environment.")
+            return
+
         def mark_saved_and_build_recap() -> str:
             save_job_credits(payload)
-            enqueue_sheet_payload(payload)
             context.user_data["last_saved_segment"] = payload.get("segment", "")
             context.user_data["last_saved_order"] = payload.get("jenis_order", "")
             context.user_data["last_saved_page"] = int(context.user_data.get("form_page", 0) or 0)
             return (
-                "✅ **Data tersimpan dan masuk antrean sinkronisasi ke Google Sheet.**\n\n"
+                "✅ **Data BERHASIL disimpan ke Google Sheet.**\n\n"
                 "📌 **Ringkasan data:**\n"
-                f"- Segment: {payload.get('segment','')}\n"
-                f"- Jenis Order: {payload.get('jenis_order','')}\n"
-                f"- Service No: {payload.get('service_no','')}\n"
-                f"- Tiket No: {(payload.get('tiket_no') or '-')}\n"
-                f"- Order No: {(payload.get('order_no') or '-')}\n"
-                f"- Datek ODP: {(payload.get('datek_odp') or '-')}\n"
-                f"- Teknisi 1: {payload.get('nama_teknisi_1','')} ({payload.get('labor_code_teknisi_1','')})\n"
-                f"- Teknisi 2: {(payload.get('nama_teknisi_2') or '-')} ({payload.get('labor_code_teknisi_2') or '-'})\n"
-                f"- Start: {payload.get('start_dt','')}\n"
-                f"- Close: {payload.get('close_dt','')}\n"
-                f"- Workzone: {payload.get('workzone','')}\n\n"
+                f"- Segment: {md(payload.get('segment',''))}\n"
+                f"- Jenis Order: {md(payload.get('jenis_order',''))}\n"
+                f"- Service No: {md(payload.get('service_no',''))}\n"
+                f"- Tiket No: {md(payload.get('tiket_no') or '-')}\n"
+                f"- Order No: {md(payload.get('order_no') or '-')}\n"
+                f"- Datek ODP: {md(payload.get('datek_odp') or '-')}\n"
+                f"- Teknisi 1: {md(payload.get('nama_teknisi_1',''))} ({md(payload.get('labor_code_teknisi_1',''))})\n"
+                f"- Teknisi 2: {md(payload.get('nama_teknisi_2') or '-')} ({md(payload.get('labor_code_teknisi_2') or '-')})\n"
+                f"- Start: {md(payload.get('start_dt',''))}\n"
+                f"- Close: {md(payload.get('close_dt',''))}\n"
+                f"- Workzone: {md(payload.get('workzone',''))}\n\n"
                 f"- Bobot/MH Order: {payload.get('man_hours_order', 0):.2f}\n\n"
                 "Pilih aksi berikut untuk lanjut."
             )
 
         try:
+            r = requests.post(GS_WEBAPP_URL, json=payload, timeout=15)
+            if r.status_code == 200:
+                recap = mark_saved_and_build_recap()
+                await safe_edit_message(q, recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
+            else:
+                await safe_edit_message(q, f"⚠️ Gagal simpan ke Google Sheet (HTTP {r.status_code}).")
+
+        except requests.exceptions.ReadTimeout:
             recap = mark_saved_and_build_recap()
-            sent_count, fail_count = flush_sheet_outbox_once(limit=1)
-            pending_count = get_outbox_pending_count()
-            if sent_count == 0:
-                recap += "\n\nℹ️ Data akan dikirim otomatis ke Google Sheet dalam beberapa detik."
-            if fail_count > 0 or pending_count > 0:
-                recap += f"\nℹ️ Antrean sinkronisasi saat ini: {pending_count} data."
+            recap += "\n\nℹ️ Untuk memastikan data benar benar tersimpan silahkan gunakan /capaian untuk melihat perubahannya"
             await safe_edit_message(q, recap, parse_mode="Markdown", reply_markup=post_save_keyboard())
+
         except Exception as e:
             await safe_edit_message(q, f"⚠️ Error kirim data: {e}")
         clear_form(context)
@@ -1561,6 +1393,10 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     step = context.user_data["form_step"]
     fields = context.user_data["form_fields"]
+    if step >= len(fields):
+        # Guard jika user mengirim teks saat form seharusnya sudah masuk tahap konfirmasi.
+        await finish_form(update.effective_chat.id, context, context.bot)
+        return
     field = fields[step]
 
     segment = context.user_data.get("form_segment", "")
@@ -1615,11 +1451,6 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ===================== MAIN =====================
-async def flush_outbox_job(context: ContextTypes.DEFAULT_TYPE):
-    sent_count, fail_count = flush_sheet_outbox_once()
-    if sent_count or fail_count:
-        logger.info("Sheet outbox flush: sent=%s fail=%s", sent_count, fail_count)
-
 def main():
     if not TOKEN:
         raise RuntimeError("BOT_TOKEN belum di-set di environment.")
@@ -1635,7 +1466,6 @@ def main():
     app.add_handler(CallbackQueryHandler(on_click))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_error_handler(on_error)
-    app.job_queue.run_repeating(flush_outbox_job, interval=SHEET_FLUSH_INTERVAL_SEC, first=1)
 
     print("✅ Bot sedang berjalan... tekan Ctrl+C untuk berhenti.")
     app.run_polling(drop_pending_updates=True)
