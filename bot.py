@@ -1085,23 +1085,22 @@ async def capaian_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     source_label = "Google Sheet"
-    sheet_error = ""
     try:
         (total_job, total_mh), detail_rows = get_monthly_summary_from_sheet(labor_code, month_key)
     except Exception as e:
-        # fallback aman ke database lokal jika endpoint sheet belum siap/error
-        source_label = "Database Lokal (fallback)"
-        sheet_error = str(e)
-        (total_job, total_mh), detail_rows = get_monthly_summary(labor_code, month_key)
+        await update.message.reply_text(
+            "❌ Gagal mengambil data dari Google Sheet.\n"
+            f"Catatan: *{str(e)}*\n\n"
+            "Perintah `/capaian` saat ini hanya menggunakan sumber data Google Sheet.",
+            parse_mode="Markdown",
+        )
+        return
 
     if total_job == 0:
         msg = (
             f"Belum ada data untuk labor code *{labor_code}* di bulan *{month_key}*.\n"
             f"Sumber data: *{source_label}*"
         )
-        if sheet_error:
-            msg += f"\nCatatan: akses Google Sheet gagal (*{sheet_error}*)."
-
         await update.message.reply_text(msg, parse_mode="Markdown")
         return
 
