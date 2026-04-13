@@ -601,6 +601,7 @@ TECH_UNITS = {
         {"name": "BARKAH SETIAWAN", "labor": "18950876"},
         {"name": "Topan Rahadian", "labor": "18910047"},
         {"name": "Henock Junior", "labor": "20960792"},
+        {"name": "OM REDI", "labor": "25830006"},
         {"name": "DENI RAMDANI", "labor": "20760013"},
     ],
     "Provisioning B2B": [
