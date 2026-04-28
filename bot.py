@@ -154,6 +154,8 @@ SEGMENT_ORDERS = {
         "Tiket Reguler Diamond",
         "Unspec Reguler",
         "Validasi Tiang",
+        "Validasi Distribusi",
+        "Validasi Feeder",
         "Valins FTM",
         "Valins ODC",
         "Valins Regular",
@@ -185,7 +187,6 @@ SEGMENT_ORDERS = {
         "ORBIT",
         "PSB Indihome",
         "REPLACEMENT ONT Premium/Dual Band",
-        "Survey PT2",
         "Progress PT2",
         "REPLACEMENT STB",
         "Tiket FFG Indihome",
@@ -283,6 +284,8 @@ ORDER_MAN_HOURS = {
     "Tiket GAMAS FEEDER": 10.0,
     "Tiket GAMAS ODC": 18.0,
     "Tiket GAMAS ODP": 3.0,
+    "Validasi Distribusi": 0.5,
+    "Validasi Feeder": 0.5,
     "Valins ODC": 4.0,
     "Valins Regular": 0.5,
     # Provisioning B2B
@@ -311,8 +314,7 @@ ORDER_MAN_HOURS = {
     "REPLACEMENT ONT Premium/Dual Band": 1.33,
     "REPLACEMENT STB": 1.33,
     "Tiket FFG Indihome": 2.0,
-    "Survey PT2": 1.5,
-    "Progress PT2": 2.0,
+    "Progress PT2": 8.0,
 }
 
 
