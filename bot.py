@@ -593,7 +593,7 @@ TECH_UNITS = {
     "Assurance B2B": [
         {"name": "IKHSAN QOYUM", "labor": "18950127"},
         {"name": "FAJAR GUSTIAN", "labor": "18940109"},
-        {"name": "BAYU MAHARDIKA", "labor": "92150121"},
+        {"name": "BAYU MAHARDIKA", "labor": "20920925"},
         {"name": "TIA SUTIANA", "labor": "20880008"},
         {"name": "AGENG HAVID H", "labor": "18910274"},
         {"name": "AGUNG APRIANSYAH", "labor": "18960565"},
