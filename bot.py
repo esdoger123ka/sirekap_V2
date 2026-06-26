@@ -645,6 +645,7 @@ TECH_UNITS = {
         {"name": "SAHRUL DARMAWAN", "labor": "19950053"},
         {"name": "SURYADI LESAMA", "labor": "18880014"},
         {"name": "FAISAL NUR AZIZ", "labor": "20940687"},
+        {"name": "BAGASKARA B", "labor": "20250008"},
     ],
     "Maintenance & External": [
         {"name": "SUDRAJAT", "labor": "18740021"},
