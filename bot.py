@@ -324,6 +324,23 @@ def man_hours_for_order(jenis_order: str) -> float:
     return float(ORDER_MAN_HOURS.get(jenis_order, 0.0))
 
 
+# ===================== ATURAN SPLIT MAN-HOURS =====================
+# MH dibagi rata antar 2 teknisi HANYA untuk:
+#   - Assurance B2B Internal
+#   - Assurance B2B Eksternal
+#   - Assurance B2C, KECUALI order GAMAS
+# Segment lain (Provisioning, dll) selalu MH penuh per teknisi.
+# Catatan: aturan ini WAJIB identik dengan isSplitEligible_() di Google Apps Script.
+def is_split_eligible(segment: str, jenis_order: str) -> bool:
+    seg = (segment or "").strip()
+    jo = (jenis_order or "").upper()
+    if seg in ("Assurance B2B Internal", "Assurance B2B Eksternal"):
+        return True
+    if seg == "Assurance B2C":
+        return "GAMAS" not in jo
+    return False
+
+
 def month_key_from_dt(dt_str: str) -> str:
     dt = parse_dt(dt_str or "")
     if not dt:
@@ -367,17 +384,32 @@ def init_db():
 
 def save_job_credits(payload: dict):
     month_key = month_key_from_dt(payload.get("close_dt", ""))
-    mh = float(payload.get("man_hours_order", 0.0) or 0.0)
+    base_mh = float(payload.get("man_hours_order", 0.0) or 0.0)
+
+    segment = payload.get("segment", "")
+    jenis_order = payload.get("jenis_order", "")
+
+    has_t1 = bool(payload.get("labor_code_teknisi_1"))
+    has_t2 = bool(payload.get("labor_code_teknisi_2"))
+    jumlah_teknisi = (1 if has_t1 else 0) + (1 if has_t2 else 0)
+
+    # Bagi rata HANYA jika dikerjakan 2 orang DAN order eligible (lihat is_split_eligible).
+    # GAMAS dan semua Provisioning tetap MH penuh per teknisi.
+    if jumlah_teknisi == 2 and is_split_eligible(segment, jenis_order):
+        mh = base_mh / 2.0
+    else:
+        mh = base_mh
+
     rows = []
 
-    if payload.get("labor_code_teknisi_1"):
+    if has_t1:
         rows.append(
             (
                 str(payload.get("telegram_user_id", "")),
                 payload.get("labor_code_teknisi_1", ""),
                 payload.get("nama_teknisi_1", ""),
-                payload.get("segment", ""),
-                payload.get("jenis_order", ""),
+                segment,
+                jenis_order,
                 payload.get("close_dt", ""),
                 month_key,
                 mh,
@@ -385,14 +417,14 @@ def save_job_credits(payload: dict):
             )
         )
 
-    if payload.get("labor_code_teknisi_2"):
+    if has_t2:
         rows.append(
             (
                 str(payload.get("telegram_user_id", "")),
                 payload.get("labor_code_teknisi_2", ""),
                 payload.get("nama_teknisi_2", ""),
-                payload.get("segment", ""),
-                payload.get("jenis_order", ""),
+                segment,
+                jenis_order,
                 payload.get("close_dt", ""),
                 month_key,
                 mh,
