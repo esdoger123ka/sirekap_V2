@@ -612,6 +612,8 @@ TECH_UNITS = {
         {"name": "VERDIAN A", "labor": "21000006"},
         {"name": "MOH WILDAN FIRDAUS", "labor": "18980509"},
         {"name": "YOGI SEPTIANDI", "labor": "19910031"},
+        {"name": "WELLY MUSLIAN", "labor": "19950027"},
+        {"name": "RIZKY FAJAR DARMAWAN", "labor": "97160381"},
         {"name": "NUR FUAD S", "labor": "18990319"},
     ],
     "Assurance B2B": [
