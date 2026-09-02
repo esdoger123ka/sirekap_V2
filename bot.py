@@ -696,6 +696,46 @@ def get_leaderboard_local(date_key: str, limit: int = 15) -> list:
         ).fetchall()
 
 
+def get_leaderboard_from_sheet(date_key: str, limit: int = 15) -> list:
+    """
+    Ambil papan capaian harian dari Apps Script.
+      ?action=leaderboard&date=YYYY-MM-DD&limit=<n>
+    Mengembalikan list of (nama, labor_code, total_job, total_tarif),
+    bentuknya sama dengan get_leaderboard_local() supaya bisa saling gantikan.
+    """
+    if not GS_CAPAIAN_URL:
+        raise RuntimeError("GS_CAPAIAN_URL/GS_WEBAPP_URL belum diset di environment.")
+
+    resp = HTTP_SESSION.get(
+        GS_CAPAIAN_URL.strip(),
+        params={"action": "leaderboard", "date": date_key, "limit": limit},
+        headers={"Accept": "application/json"},
+        allow_redirects=True,
+        timeout=HTTP_TIMEOUT,
+    )
+    resp.raise_for_status()
+
+    try:
+        payload = resp.json()
+    except ValueError as err:
+        raise RuntimeError(
+            "Respons Apps Script bukan JSON valid untuk action=leaderboard."
+        ) from err
+
+    if not payload.get("ok"):
+        raise RuntimeError(payload.get("error") or "Respons Apps Script tidak valid.")
+
+    return [
+        (
+            str(row.get("nama", "") or ""),
+            str(row.get("labor_code", "") or ""),
+            int(row.get("total_job", 0) or 0),
+            float(row.get("total_tarif", 0) or 0),
+        )
+        for row in (payload.get("rank") or [])
+    ]
+
+
 def get_pendapatan_from_sheet(labor_code: str, *, month_key: str = "", date_key: str = "") -> tuple:
     """
     Ambil rekap rupiah dari Apps Script.
@@ -1609,12 +1649,24 @@ async def leaderboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target = datetime.now()
 
     date_key = target.strftime("%Y-%m-%d")
-    rows = get_leaderboard_local(date_key)
+
+    source_label = "Google Sheet"
+    sheet_error = ""
+    try:
+        rows = get_leaderboard_from_sheet(date_key)
+    except Exception as e:
+        source_label = "Database Lokal (fallback)"
+        sheet_error = str(e)
+        rows = get_leaderboard_local(date_key)
 
     if not rows:
-        await update.message.reply_text(
-            f"Belum ada pekerjaan freelance tercatat pada {target.strftime('%d/%m/%Y')}."
-        )
+        msg = f"Belum ada pekerjaan freelance tercatat pada {target.strftime('%d/%m/%Y')}."
+        if sheet_error:
+            msg += (
+                "\n\n⚠️ Endpoint sheet gagal diakses, jadi ini dibaca dari database "
+                "lokal yang isinya hilang setiap redeploy — jangan dijadikan acuan."
+            )
+        await update.message.reply_text(msg)
         return
 
     medals = ["🥇", "🥈", "🥉"]
@@ -1625,7 +1677,11 @@ async def leaderboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lines.append("")
     lines.append(f"Total tim: *{format_rp(sum(r[3] for r in rows))}*")
-    lines.append("_Sumber: database lokal bot. Estimasi, bukan nilai pembayaran final._")
+    lines.append(f"Sumber Data: *{source_label}*")
+    lines.append("_Estimasi berdasarkan data input bot, bukan nilai pembayaran final._")
+
+    if sheet_error:
+        lines.append("\n⚠️ Data sheet tidak terbaca, angka berasal dari database lokal (tidak lengkap).")
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
