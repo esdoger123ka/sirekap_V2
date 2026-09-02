@@ -363,9 +363,56 @@ PEMBAGIAN_TARIF = "semua_teknisi"
 #
 # Contoh:
 #   "18980509": ("MOH WILDAN FIRDAUS", "2026-08-01"),
+# Tanggal efektif diisi 2026-09-01 untuk semua, sama dengan TARIF_BERLAKU_SEJAK.
+# Tanggal yang LEBIH AWAL dari itu tidak akan mengubah apa pun, karena
+# is_freelance() tetap menolak order yang di-close sebelum TARIF_BERLAKU_SEJAK.
+# Jadi tanggal ini hanya perlu diedit untuk teknisi yang berubah status
+# SETELAH 1 September 2026.
 FREELANCE_TECHS: dict[str, tuple[str, str]] = {
-    # TODO: isi daftar teknisi freelance di sini.
+    "18980509": ("MOH WILDAN FIRDAUS", "2026-09-01"),
+    "20800025": ("GANDI GALIH", "2026-09-01"),
+    "18740003": ("MAKARIUS SUMIARSO", "2026-09-01"),
+    "20940711": ("RENGGI NUGRAHA", "2026-09-01"),
+    "18780003": ("HENDRA SURYANA", "2026-09-01"),
+    "22000240": ("ARVAN MAULANA", "2026-09-01"),
+    "19910031": ("YOGI SEPTIANDI", "2026-09-01"),
+    "18930434": ("RENDY JUNTARA", "2026-09-01"),
+    "19730010": ("R AGUS NUGRAHA", "2026-09-01"),
+    "25950132": ("ASEP MULYADI", "2026-09-01"),
+    "25020038": ("IHSAN MAULANA", "2026-09-01"),
+    "18940108": ("RISMAN FAUZI", "2026-09-01"),
+    "18940040": ("HENDRA GUNAWAN", "2026-09-01"),
+    "20950982": ("RIZKY GUNAWAN", "2026-09-01"),
+    "21000006": ("VERDIAN A", "2026-09-01"),
+    "20880157": ("HANIF FARHAN MUTAQIN", "2026-09-01"),
+    "15893687": ("DODO ROHYANDI", "2026-09-01"),
+    "18990146": ("IQBAL FAUZI", "2026-09-01"),
+    "20950687": ("ALDY ARDIANSYAH", "2026-09-01"),
+
+    # Unit di TECH_UNITS masih asumsi (Provisioning B2C) - perlu dikonfirmasi.
+    "25950103": ("MUHAMMAD FIKRI ARIGHI", "2026-09-01"),
 }
+
+
+def audit_roster_freelance() -> list[str]:
+    """
+    Cek konsistensi FREELANCE_TECHS terhadap TECH_UNITS. Dipanggil sekali saat
+    startup dan hasilnya ditulis ke log, supaya labor code yang salah ketik
+    ketahuan sebelum jadi selisih pembayaran.
+    """
+    semua = {t["labor"]: t["name"] for daftar in TECH_UNITS.values() for t in daftar}
+    masalah = []
+
+    for labor, (nama, sejak) in FREELANCE_TECHS.items():
+        if labor not in semua:
+            masalah.append(f"labor {labor} ({nama}) tidak ada di TECH_UNITS - tidak akan pernah dapat order")
+        elif semua[labor].strip().upper() != nama.strip().upper():
+            masalah.append(f"labor {labor}: nama di roster '{nama}' != TECH_UNITS '{semua[labor]}'")
+
+        if _parse_iso_date(sejak) is None:
+            masalah.append(f"labor {labor}: tanggal efektif '{sejak}' tidak valid (harus YYYY-MM-DD)")
+
+    return masalah
 
 
 def _parse_iso_date(s: str):
@@ -784,7 +831,6 @@ def get_monthly_summary_from_sheet(labor_code: str, month_key: str) -> tuple:
 # ===================== TEKNISI (MENU PILIH) =====================
 TECH_UNITS = {
     "Assurance B2C": [
-        {"name": "MAKARIUS SUMIARSO", "labor": "18740003"},
         {"name": "LUTHFI FATURAHMAN", "labor": "20940959"},
         {"name": "SEPTIAN MAULUDIN", "labor": "20920961"},
         {"name": "GISA TAKWA MARCEL", "labor": "20971385"},
@@ -793,11 +839,8 @@ TECH_UNITS = {
         {"name": "NUGROHO EDI SUSANTO", "labor": "20870071"},
         {"name": "FIRMAN FUJI KHOMIRUN", "labor": "18870008"},
         {"name": "ARIFIN SURIFIN", "labor": "18720002"},
-        {"name": "R AGUS NUGRAHA", "labor": "19730010"},
         {"name": "AHMAD RANGGA MUZAKKI", "labor": "21000004"},
-        {"name": "IQBAL FAUZI", "labor": "18990146"},
         {"name": "ENJANG ABDUL HAMID", "labor": "19800019"},
-        {"name": "RENDY JUNTARA", "labor": "18930434"},
         {"name": "YUDHA AFRIZAL", "labor": "18940455"},
         {"name": "AJI WAHYU APRIADI", "labor": "20940958"},
         {"name": "RIZA ABURIZAL FAUZI", "labor": "20950971"},
@@ -805,22 +848,26 @@ TECH_UNITS = {
         {"name": "SANDI RAHMADI", "labor": "19950308"},
         {"name": "HENDRA SETIAWAN", "labor": "18840043"},
         {"name": "DIKI SODIKIN", "labor": "18980373"},
-        {"name": "TRI DIAN", "labor": "18840044"},
         {"name": "DWI PUTRA YULIANTO", "labor": "21010001"},
         {"name": "CECEP ENDI KURNIA", "labor": "20971336"},
         {"name": "MUHAMAD FEBRY INDRA", "labor": "18990069"},
-        {"name": "ALDY ARDIANSYAH", "labor": "20950687"},
         {"name": "SETIO PRAMONO", "labor": "18840003"},
-        {"name": "HENDRA SURYANA", "labor": "18780003"},
+        # Pemutakhiran unit, Sep 2026.
+        {"name": "FAISAL NUR AZIZ", "labor": "20940687"},
+        {"name": "SAHRUL DARMAWAN", "labor": "19950053"},
+        {"name": "YANTO HERYANTO", "labor": "19810003"},
+        {"name": "PUJI SANTOSO", "labor": "18820045"},
+        {"name": "DUDUNG ALAMSYAH", "labor": "18960355"},
+        {"name": "MUHAMMAD SYAMSUL BAHRI", "labor": "21970031"},
+        {"name": "BILLY ZULFIKAR", "labor": "20950686"},
+        {"name": "ALVINO MAULANA PUTRA", "labor": "20970920"},
     ],
     "Provisioning B2C": [
         {"name": "AHMAD RIZAL", "labor": "18980067"},
         {"name": "AHMAD ZATNIKA", "labor": "21940017"},
-        {"name": "ALVINO MAULANA PUTRA", "labor": "20970920"},
         {"name": "ARIF BUDIMAN", "labor": "18970322"},
         {"name": "ARVAN MAULANA", "labor": "22000240"},
         {"name": "ASEP MULYADI", "labor": "25950132"},
-        {"name": "BILLY ZULFIKAR", "labor": "20950686"},
         {"name": "CAHYO JALU PRASETYO", "labor": "20970046"},
         {"name": "DODO ROHYANDI", "labor": "15893687"},
         {"name": "EDO RAMDANI", "labor": "25000028"},
@@ -831,8 +878,6 @@ TECH_UNITS = {
         {"name": "HENDRA GUNAWAN", "labor": "18940040"},
         {"name": "HENDRIAWAN", "labor": "20960831"},
         {"name": "IHSAN MAULANA", "labor": "25020038"},
-        {"name": "MUHAMMAD SYAMSUL BAHRI", "labor": "21970031"},
-        {"name": "PUJI SANTOSO", "labor": "18820045"},
         {"name": "RENGGI NUGRAHA", "labor": "20940711"},
         {"name": "RIFKY FAJAR F", "labor": "25970117"},
         {"name": "RISMAN FAUZI", "labor": "18940108"},
@@ -844,6 +889,18 @@ TECH_UNITS = {
         {"name": "WELLY MUSLIAN", "labor": "19950027"},
         {"name": "RIZKY FAJAR DARMAWAN", "labor": "97160381"},
         {"name": "NUR FUAD S", "labor": "18990319"},
+        # Pindah dari unit Assurance B2C ke Provisioning B2C (PSB), Sep 2026.
+        {"name": "MAKARIUS SUMIARSO", "labor": "18740003"},
+        {"name": "HENDRA SURYANA", "labor": "18780003"},
+        {"name": "RENDY JUNTARA", "labor": "18930434"},
+        {"name": "R AGUS NUGRAHA", "labor": "19730010"},
+        {"name": "IQBAL FAUZI", "labor": "18990146"},
+        {"name": "ALDY ARDIANSYAH", "labor": "20950687"},
+        # BELUM DIKONFIRMASI: unit asli MUHAMMAD FIKRI ARIGHI belum diberitahu.
+        # Ditempatkan di sini agar bisa dipilih; pindahkan jika unitnya berbeda.
+        {"name": "MUHAMMAD FIKRI ARIGHI", "labor": "25950103"},
+        # Pemutakhiran unit, Sep 2026.
+        {"name": "TRI DIAN", "labor": "18840044"},
     ],
     "Assurance B2B": [
         {"name": "IKHSAN QOYUM", "labor": "18950127"},
@@ -873,9 +930,7 @@ TECH_UNITS = {
     ],
     "Provisioning B2B": [
         {"name": "FIKRI FS", "labor": "18990137"},
-        {"name": "SAHRUL DARMAWAN", "labor": "19950053"},
         {"name": "SURYADI LESAMA", "labor": "18880014"},
-        {"name": "FAISAL NUR AZIZ", "labor": "20940687"},
         {"name": "BAGASKARA B", "labor": "20250008"},
     ],
     "Maintenance & External": [
@@ -883,8 +938,6 @@ TECH_UNITS = {
         {"name": "IQBAL", "labor": "20951078"},
         {"name": "DANI ALFIAN", "labor": "18990056"},
         {"name": "ERZA GUMILANG PRAKOSO", "labor": "20940957"},
-        {"name": "YANTO HERYANTO", "labor": "19810003"},
-        {"name": "DUDUNG ALAMSYAH", "labor": "18960355"},
     ],
 }
 
@@ -1928,6 +1981,9 @@ def main():
     app.add_handler(CommandHandler("menu", menu_cmd))
     app.add_handler(CommandHandler("cancel", cancel_cmd))
     app.add_handler(CommandHandler("help", help_cmd))
+    for _masalah in audit_roster_freelance():
+        logger.warning("ROSTER FREELANCE: %s", _masalah)
+
     app.add_handler(CommandHandler("capaian", capaian_cmd))
     app.add_handler(CommandHandler("pendapatan", pendapatan_cmd))
     app.add_handler(CommandHandler("leaderboard", leaderboard_cmd))
