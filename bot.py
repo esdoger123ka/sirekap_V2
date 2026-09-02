@@ -188,7 +188,8 @@ SEGMENT_ORDERS = {
         "ORBIT",
         "PSB Indihome",
         "REPLACEMENT ONT Premium/Dual Band",
-        "Progress PT2",
+        "Progress PT2 Expand",
+        "Progress PT2 Simple",
         "REPLACEMENT STB",
         "Tiket FFG Indihome",
     ],
@@ -316,12 +317,114 @@ ORDER_MAN_HOURS = {
     "REPLACEMENT ONT Premium/Dual Band": 1.33,
     "REPLACEMENT STB": 1.33,
     "Tiket FFG Indihome": 2.0,
+    "Progress PT2 Expand": 8.0,
+    "Progress PT2 Simple": 8.0,
+    # Legacy: dipertahankan agar data lama "Progress PT2" tetap punya bobot.
+    # TODO: konfirmasi apakah MH Expand & Simple memang sama-sama 8.0.
     "Progress PT2": 8.0,
 }
 
 
 def man_hours_for_order(jenis_order: str) -> float:
     return float(ORDER_MAN_HOURS.get(jenis_order, 0.0))
+
+
+# ===================== TARIF TEKNISI FREELANCE =====================
+# Sumber: kebijakan perusahaan per September 2026.
+# Order yang TIDAK terdaftar di sini bernilai 0 rupiah -> tidak dibayar per job.
+# Jika tarif berubah, ubah di sini SAJA (satu sumber kebenaran) lalu redeploy.
+FREELANCE_RATES = {
+    "PSB Indihome": 140_000,
+    "PSB INDIBIZ": 140_000,
+    "Progress PT2 Expand": 100_000,
+    "Progress PT2 Simple": 400_000,
+    "DISMANTLING ONT": 65_000,
+    "REPLACEMENT ONT Premium/Dual Band": 47_500,
+}
+
+# Tanggal berlaku tarif di atas. Order dengan close_dt SEBELUM tanggal ini
+# tidak dihitung rupiahnya (menghindari perhitungan mundur yang salah).
+TARIF_BERLAKU_SEJAK = datetime(2026, 9, 1)
+
+# Kebijakan pembagian tarif jika 1 order dikerjakan 2 teknisi.
+# "semua_teknisi"  -> nilai order dibagi jumlah teknisi yang tercatat di order
+#                     (1 PSB oleh 2 orang = 70.000 per orang; total tetap 140.000)
+# "tanpa_pembagian"-> tiap teknisi freelance menerima tarif penuh
+PEMBAGIAN_TARIF = "semua_teknisi"
+
+# ===================== ROSTER TEKNISI FREELANCE =====================
+# WAJIB DIISI. Selama dict ini kosong, tidak ada teknisi yang dianggap
+# freelance dan seluruh fitur rupiah tidak akan aktif.
+#
+# Format:  "labor_code": ("NAMA TEKNISI", "YYYY-MM-DD")
+#                                          ^ tanggal efektif berubah status.
+# Tanggal efektif dipakai agar order yang di-close SEBELUM konversi status
+# tetap dihitung sebagai man-hour, bukan rupiah.
+#
+# Contoh:
+#   "18980509": ("MOH WILDAN FIRDAUS", "2026-08-01"),
+FREELANCE_TECHS: dict[str, tuple[str, str]] = {
+    # TODO: isi daftar teknisi freelance di sini.
+}
+
+
+def _parse_iso_date(s: str):
+    try:
+        return datetime.strptime((s or "").strip(), "%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def is_freelance(labor_code: str, close_dt: str = "") -> bool:
+    """
+    True jika labor_code berstatus freelance PADA SAAT order di-close.
+    close_dt boleh format bot (DD/MM/YYYY HH:MM) atau hasil normalize_dt_for_sheet.
+    """
+    entry = FREELANCE_TECHS.get((labor_code or "").strip())
+    if not entry:
+        return False
+
+    efektif = _parse_iso_date(entry[1])
+    if not efektif:
+        logger.warning("Tanggal efektif freelance tidak valid untuk labor %s", labor_code)
+        return False
+
+    raw = (close_dt or "").strip()
+    dt = parse_dt(raw)
+    if not dt and raw:
+        # toleransi format tanggal tanpa jam (DD/MM/YYYY atau YYYY-MM-DD)
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%Y-%m-%d %H:%M:%S"):
+            try:
+                dt = datetime.strptime(raw, fmt)
+                break
+            except ValueError:
+                continue
+    if not dt:
+        if raw:
+            # Jangan diam-diam memakai tanggal hari ini untuk perhitungan uang.
+            logger.warning("close_dt tidak bisa diparse (%r); order tidak dihitung sebagai freelance.", raw)
+            return False
+        dt = datetime.now()
+
+    return dt >= efektif and dt >= TARIF_BERLAKU_SEJAK
+
+
+def rate_for_order(jenis_order: str) -> float:
+    return float(FREELANCE_RATES.get(jenis_order, 0.0))
+
+
+def tarif_per_teknisi(jenis_order: str, jumlah_teknisi: int) -> float:
+    """Nilai rupiah yang diterima SATU teknisi freelance untuk order ini."""
+    base = rate_for_order(jenis_order)
+    if base <= 0:
+        return 0.0
+    if PEMBAGIAN_TARIF == "semua_teknisi" and jumlah_teknisi >= 2:
+        return base / float(jumlah_teknisi)
+    return base
+
+
+def format_rp(nilai: float) -> str:
+    return "Rp " + f"{int(round(nilai)):,}".replace(",", ".")
 
 
 # ===================== ATURAN SPLIT MAN-HOURS =====================
@@ -346,6 +449,17 @@ def month_key_from_dt(dt_str: str) -> str:
     if not dt:
         dt = datetime.now()
     return dt.strftime("%m/%Y")
+
+
+def date_key_from_dt(dt_str: str) -> str:
+    dt = parse_dt(dt_str or "")
+    if not dt:
+        dt = datetime.now()
+    return dt.strftime("%Y-%m-%d")
+
+
+def _is_date_arg(text: str) -> bool:
+    return bool(re.fullmatch(r"\d{1,2}/\d{1,2}/\d{4}", text or ""))
 
 
 def month_key_for_sheet(dt_str: str) -> str:
@@ -379,7 +493,25 @@ def init_db():
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_job_credits_labor_month ON job_credits (labor_code, month_key)")
+
+        # Migrasi ringan: tambahkan kolom baru jika DB lama belum punya.
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(job_credits)")}
+        if "is_freelance" not in existing:
+            conn.execute("ALTER TABLE job_credits ADD COLUMN is_freelance INTEGER NOT NULL DEFAULT 0")
+        if "tarif" not in existing:
+            conn.execute("ALTER TABLE job_credits ADD COLUMN tarif REAL NOT NULL DEFAULT 0")
+        if "date_key" not in existing:
+            conn.execute("ALTER TABLE job_credits ADD COLUMN date_key TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_job_credits_labor_date ON job_credits (labor_code, date_key)")
         conn.commit()
+
+    if not os.path.isabs(DB_PATH) or DB_PATH.startswith("/tmp"):
+        logger.warning(
+            "BOT_DB_PATH=%s berada di filesystem container. Di Railway isinya HILANG "
+            "setiap redeploy. Arahkan ke volume persisten agar fallback /pendapatan "
+            "tidak menampilkan angka nol yang menyesatkan.",
+            DB_PATH,
+        )
 
 
 def save_job_credits(payload: dict):
@@ -400,37 +532,30 @@ def save_job_credits(payload: dict):
     else:
         mh = base_mh
 
+    date_key = date_key_from_dt(payload.get("close_dt", ""))
     rows = []
 
-    if has_t1:
-        rows.append(
-            (
-                str(payload.get("telegram_user_id", "")),
-                payload.get("labor_code_teknisi_1", ""),
-                payload.get("nama_teknisi_1", ""),
-                segment,
-                jenis_order,
-                payload.get("close_dt", ""),
-                month_key,
-                mh,
-                payload.get("timestamp_input", ""),
-            )
+    def _row(labor_key: str, nama_key: str, tarif_key: str, flag_key: str):
+        return (
+            str(payload.get("telegram_user_id", "")),
+            payload.get(labor_key, ""),
+            payload.get(nama_key, ""),
+            segment,
+            jenis_order,
+            payload.get("close_dt", ""),
+            month_key,
+            date_key,
+            mh,
+            1 if payload.get(flag_key) else 0,
+            float(payload.get(tarif_key, 0.0) or 0.0),
+            payload.get("timestamp_input", ""),
         )
 
+    if has_t1:
+        rows.append(_row("labor_code_teknisi_1", "nama_teknisi_1", "tarif_teknisi_1", "freelance_teknisi_1"))
+
     if has_t2:
-        rows.append(
-            (
-                str(payload.get("telegram_user_id", "")),
-                payload.get("labor_code_teknisi_2", ""),
-                payload.get("nama_teknisi_2", ""),
-                segment,
-                jenis_order,
-                payload.get("close_dt", ""),
-                month_key,
-                mh,
-                payload.get("timestamp_input", ""),
-            )
-        )
+        rows.append(_row("labor_code_teknisi_2", "nama_teknisi_2", "tarif_teknisi_2", "freelance_teknisi_2"))
 
     if not rows:
         return
@@ -440,8 +565,8 @@ def save_job_credits(payload: dict):
             """
             INSERT INTO job_credits (
                 telegram_user_id, labor_code, teknisi_name, segment, jenis_order,
-                close_dt, month_key, man_hours, timestamp_input
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                close_dt, month_key, date_key, man_hours, is_freelance, tarif, timestamp_input
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )
@@ -475,6 +600,110 @@ def get_monthly_summary(labor_code: str, month_key: str) -> tuple:
         ).fetchall()
 
     return total_row, detail_rows
+
+
+def get_pendapatan_local(labor_code: str, *, month_key: str = "", date_key: str = "") -> tuple:
+    """
+    Rekap rupiah dari DB lokal. Nilai tarif diambil dari kolom `tarif` yang
+    di-snapshot saat input, BUKAN dihitung ulang dari FREELANCE_RATES,
+    sehingga perubahan tarif di kemudian hari tidak mengubah data lama.
+    """
+    if date_key:
+        where, params = "labor_code = ? AND date_key = ?", (labor_code, date_key)
+    else:
+        where, params = "labor_code = ? AND month_key = ?", (labor_code, month_key)
+
+    with get_conn() as conn:
+        total_row = conn.execute(
+            f"SELECT COUNT(*), COALESCE(SUM(tarif), 0) FROM job_credits WHERE {where} AND is_freelance = 1",
+            params,
+        ).fetchone()
+
+        detail_rows = conn.execute(
+            f"""
+            SELECT jenis_order, COUNT(*) AS total_job, COALESCE(SUM(tarif), 0) AS total_tarif
+            FROM job_credits
+            WHERE {where} AND is_freelance = 1
+            GROUP BY jenis_order
+            ORDER BY total_tarif DESC, total_job DESC, jenis_order ASC
+            """,
+            params,
+        ).fetchall()
+
+    return total_row, detail_rows
+
+
+def get_leaderboard_local(date_key: str, limit: int = 15) -> list:
+    with get_conn() as conn:
+        return conn.execute(
+            """
+            SELECT teknisi_name, labor_code, COUNT(*) AS total_job,
+                   COALESCE(SUM(tarif), 0) AS total_tarif
+            FROM job_credits
+            WHERE date_key = ? AND is_freelance = 1
+            GROUP BY labor_code, teknisi_name
+            ORDER BY total_tarif DESC, total_job DESC
+            LIMIT ?
+            """,
+            (date_key, limit),
+        ).fetchall()
+
+
+def get_pendapatan_from_sheet(labor_code: str, *, month_key: str = "", date_key: str = "") -> tuple:
+    """
+    Ambil rekap rupiah dari Apps Script.
+      ?action=pendapatan&labor_code=<...>&month=<MM/YYYY>
+      ?action=pendapatan&labor_code=<...>&date=<YYYY-MM-DD>
+    Respons JSON:
+      {"ok": true, "total_job": 8, "total_tarif": 920000,
+       "details": [{"jenis_order": "PSB Indihome", "total_job": 4, "total_tarif": 560000}]}
+
+    CATATAN PENTING: total_tarif WAJIB dijumlahkan dari kolom tarif yang
+    tersimpan per baris di sheet. Menghitung total_job x tarif di sisi mana pun
+    akan SALAH untuk order yang dikerjakan 2 teknisi (tarif dibagi dua).
+    """
+    if not GS_CAPAIAN_URL:
+        raise RuntimeError("GS_CAPAIAN_URL/GS_WEBAPP_URL belum diset di environment.")
+
+    params = {"action": "pendapatan", "labor_code": labor_code}
+    if date_key:
+        params["date"] = date_key
+    else:
+        params["month"] = month_key
+
+    resp = HTTP_SESSION.get(
+        GS_CAPAIAN_URL.strip(),
+        params=params,
+        headers={"Accept": "application/json"},
+        allow_redirects=True,
+        timeout=HTTP_TIMEOUT,
+    )
+    resp.raise_for_status()
+
+    try:
+        payload = resp.json()
+    except ValueError as err:
+        raise RuntimeError(
+            "Respons Apps Script bukan JSON valid untuk action=pendapatan. "
+            "Pastikan endpoint sudah mendukung action ini."
+        ) from err
+
+    if not payload.get("ok"):
+        raise RuntimeError(payload.get("error") or "Respons Apps Script tidak valid.")
+
+    total_job = int(payload.get("total_job", 0) or 0)
+    total_tarif = float(payload.get("total_tarif", 0) or 0)
+
+    detail_rows = [
+        (
+            str(row.get("jenis_order", "") or ""),
+            int(row.get("total_job", 0) or 0),
+            float(row.get("total_tarif", 0) or 0),
+        )
+        for row in (payload.get("details") or [])
+    ]
+
+    return (total_job, total_tarif), detail_rows
 
 
 def get_monthly_summary_from_sheet(labor_code: str, month_key: str) -> tuple:
@@ -671,6 +900,8 @@ ORDERS_WITH_DATEK_ODP = {
     "PSB Indihome",
     "PDA",
     "Survey PT2",
+    "Progress PT2 Expand",
+    "Progress PT2 Simple",
     "Progress PT2",
     # Provisioning B2B
     "PSB DATIN",
@@ -1006,6 +1237,15 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
     raw_start_dt = ans.get("start_dt", "").strip()
     raw_close_dt = ans.get("close_dt", "").strip()
 
+    labor1 = ans.get("labor1", "").strip()
+    labor2 = ans.get("labor2", "").strip()
+    jumlah_teknisi = (1 if labor1 else 0) + (1 if labor2 else 0)
+
+    fl1 = is_freelance(labor1, raw_close_dt)
+    fl2 = is_freelance(labor2, raw_close_dt)
+    tarif1 = tarif_per_teknisi(jenis_order, jumlah_teknisi) if fl1 else 0.0
+    tarif2 = tarif_per_teknisi(jenis_order, jumlah_teknisi) if fl2 else 0.0
+
     payload = {
         "timestamp_input": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "telegram_user_id": str(user_id),
@@ -1024,6 +1264,12 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         "start_dt": normalize_dt_for_sheet(raw_start_dt),
         "close_dt": normalize_dt_for_sheet(raw_close_dt),
         "workzone": ans.get("workzone", "").strip(),
+        # --- field baru untuk teknisi freelance ---
+        "tarif_order": rate_for_order(jenis_order),
+        "freelance_teknisi_1": fl1,
+        "freelance_teknisi_2": fl2,
+        "tarif_teknisi_1": tarif1,
+        "tarif_teknisi_2": tarif2,
     }
 
     context.user_data["pending_payload"] = payload
@@ -1041,8 +1287,9 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
         f"tanggal jam start: {raw_start_dt}\n"
         f"tanggal jam close: {raw_close_dt}\n"
         f"workzone: {payload['workzone']}\n\n"
-        f"bobot/man-hours order: {payload['man_hours_order']:.2f}\n\n"
-        "Apakah data ini sudah benar?"
+        f"bobot/man-hours order: {payload['man_hours_order']:.2f}"
+        + baris_rupiah(payload)
+        + "\n\nApakah data ini sudah benar?"
     )
 
     await bot.send_message(
@@ -1053,6 +1300,26 @@ async def finish_form(chat_id: int, context: ContextTypes.DEFAULT_TYPE, bot):
     )
 
 
+def baris_rupiah(payload: dict) -> str:
+    """Baris tambahan pada ringkasan, hanya muncul jika ada teknisi freelance."""
+    parts = []
+    if payload.get("freelance_teknisi_1"):
+        parts.append(
+            f"- {payload.get('nama_teknisi_1','')}: {format_rp(payload.get('tarif_teknisi_1', 0))}"
+        )
+    if payload.get("freelance_teknisi_2"):
+        parts.append(
+            f"- {payload.get('nama_teknisi_2','')}: {format_rp(payload.get('tarif_teknisi_2', 0))}"
+        )
+
+    if not parts:
+        return ""
+
+    header = f"\n\n💰 *Perkiraan pendapatan freelance* (nilai order {format_rp(payload.get('tarif_order', 0))}):\n"
+    footer = "\n_Angka ini estimasi berdasarkan input, bukan nilai pembayaran final._"
+    return header + "\n".join(parts) + footer
+
+
 # ===================== COMMANDS =====================
 def help_text() -> str:
     return (
@@ -1061,6 +1328,9 @@ def help_text() -> str:
         "- `/menu` : mulai input data pekerjaan baru.\n"
         "- `/capaian <labor_code> [MM/YYYY]` : melihat capaian job & man-hours per bulan.\n"
         "  Contoh: `/capaian 20971337 02/2026`\n"
+        "- `/pendapatan <labor_code> [MM/YYYY | DD/MM/YYYY]` : perkiraan pendapatan teknisi freelance.\n"
+        "  Contoh: `/pendapatan 18980509 02/09/2026`\n"
+        "- `/leaderboard [DD/MM/YYYY]` : papan capaian harian teknisi freelance.\n"
         "- `/cancel` : batalkan proses input yang sedang berjalan.\n"
         "- `/help` : tampilkan panduan ini kapan saja.\n\n"
         "*Tips input cepat:*\n"
@@ -1167,6 +1437,146 @@ async def capaian_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+async def pendapatan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not FREELANCE_TECHS:
+        await update.message.reply_text(
+            "⚠️ Daftar teknisi freelance (`FREELANCE_TECHS`) masih kosong di konfigurasi bot. "
+            "Fitur pendapatan belum aktif.",
+            parse_mode="Markdown",
+        )
+        return
+
+    args = context.args or []
+    if not args:
+        await update.message.reply_text(
+            "Gunakan format:\n"
+            "`/pendapatan <labor_code> [MM/YYYY | DD/MM/YYYY]`\n\n"
+            "Contoh:\n"
+            "`/pendapatan 18980509` (bulan berjalan)\n"
+            "`/pendapatan 18980509 09/2026`\n"
+            "`/pendapatan 18980509 02/09/2026` (harian)",
+            parse_mode="Markdown",
+        )
+        return
+
+    labor_code = args[0]
+    month_key = datetime.now().strftime("%m/%Y")
+    date_key = ""
+    periode_label = month_key
+
+    if len(args) >= 2:
+        arg = args[1]
+        if _is_date_arg(arg):
+            d, m, y = (int(x) for x in arg.split("/"))
+            try:
+                date_key = datetime(y, m, d).strftime("%Y-%m-%d")
+            except ValueError:
+                await update.message.reply_text("Tanggal tidak valid.")
+                return
+            periode_label = arg
+        elif _is_month_arg(arg):
+            month_key = arg
+            periode_label = arg
+        else:
+            await update.message.reply_text(
+                "Format periode salah. Gunakan `MM/YYYY` atau `DD/MM/YYYY`.",
+                parse_mode="Markdown",
+            )
+            return
+
+    if labor_code not in FREELANCE_TECHS:
+        await update.message.reply_text(
+            f"Labor code *{labor_code}* tidak terdaftar sebagai teknisi freelance. "
+            "Gunakan `/capaian` untuk melihat man-hours.",
+            parse_mode="Markdown",
+        )
+        return
+
+    nama = FREELANCE_TECHS[labor_code][0]
+    source_label = "Google Sheet"
+    sheet_error = ""
+    try:
+        (total_job, total_tarif), detail_rows = get_pendapatan_from_sheet(
+            labor_code, month_key=month_key, date_key=date_key
+        )
+    except Exception as e:
+        source_label = "Database Lokal (fallback)"
+        sheet_error = str(e)
+        (total_job, total_tarif), detail_rows = get_pendapatan_local(
+            labor_code, month_key=month_key, date_key=date_key
+        )
+
+    if total_job == 0:
+        msg = f"Belum ada pekerjaan tercatat untuk *{nama}* pada periode *{periode_label}*.\nSumber: *{source_label}*"
+        if sheet_error:
+            msg += (
+                "\n\n⚠️ Endpoint sheet gagal diakses, angka di atas berasal dari database lokal "
+                "yang isinya hilang setiap redeploy — jangan dijadikan acuan."
+            )
+        await update.message.reply_text(msg, parse_mode="Markdown")
+        return
+
+    lines = [
+        "💰 *PERKIRAAN PENDAPATAN FREELANCE*",
+        f"Teknisi: *{nama}* ({labor_code})",
+        f"Periode: *{periode_label}*",
+        f"Sumber Data: *{source_label}*",
+        "",
+        f"Total Job: *{total_job}*",
+        f"Total: *{format_rp(total_tarif)}*",
+        "",
+        "Rincian per jenis order:",
+    ]
+    for jenis_order, job_count, tarif_sum in detail_rows[:20]:
+        lines.append(f"- {jenis_order}: {job_count} job / {format_rp(tarif_sum)}")
+
+    lines.append("")
+    lines.append("_Estimasi berdasarkan data input bot. Nilai pembayaran final mengikuti verifikasi resmi._")
+
+    if sheet_error:
+        lines.append("\n⚠️ Data sheet tidak terbaca, angka berasal dari database lokal (tidak lengkap).")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def leaderboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not FREELANCE_TECHS:
+        await update.message.reply_text("⚠️ Daftar teknisi freelance masih kosong di konfigurasi bot.")
+        return
+
+    args = context.args or []
+    if args and _is_date_arg(args[0]):
+        d, m, y = (int(x) for x in args[0].split("/"))
+        try:
+            target = datetime(y, m, d)
+        except ValueError:
+            await update.message.reply_text("Tanggal tidak valid.")
+            return
+    else:
+        target = datetime.now()
+
+    date_key = target.strftime("%Y-%m-%d")
+    rows = get_leaderboard_local(date_key)
+
+    if not rows:
+        await update.message.reply_text(
+            f"Belum ada pekerjaan freelance tercatat pada {target.strftime('%d/%m/%Y')}."
+        )
+        return
+
+    medals = ["🥇", "🥈", "🥉"]
+    lines = [f"🏆 *PAPAN CAPAIAN FREELANCE — {target.strftime('%d/%m/%Y')}*", ""]
+    for i, (nama, labor, jobs, tarif) in enumerate(rows):
+        prefix = medals[i] if i < 3 else f"{i+1}."
+        lines.append(f"{prefix} {nama} — {jobs} job / {format_rp(tarif)}")
+
+    lines.append("")
+    lines.append(f"Total tim: *{format_rp(sum(r[3] for r in rows))}*")
+    lines.append("_Sumber: database lokal bot. Estimasi, bukan nilai pembayaran final._")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
 # ===================== BUTTON HANDLER =====================
 async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -1213,6 +1623,19 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if q.data.startswith("TECH_PICK|"):
         _, unit, idx, target = q.data.split("|", 3)
         tech = TECH_UNITS[unit][int(idx)]
+
+        # Teknisi 2 tidak boleh orang yang sama dengan teknisi 1.
+        # Di data lama hal ini pernah terjadi dan menyebabkan 1 orang tercatat
+        # 2x untuk satu order -> jumlah job (dan rupiah) menggelembung.
+        if target == "labor2":
+            labor1 = context.user_data.get("form_answers", {}).get("labor1", "")
+            if labor1 and tech["labor"] == labor1:
+                await q.answer(
+                    "Teknisi 2 tidak boleh sama dengan Teknisi 1. Pilih orang lain "
+                    "atau 'Tidak ada teknisi 2'.",
+                    show_alert=True,
+                )
+                return
 
         context.user_data["form_answers"][target] = tech["labor"]
         context.user_data["form_answers"][f"{target}_name"] = tech["name"]
@@ -1278,8 +1701,9 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"tanggal jam start: {payload.get('start_dt','')}\n"
             f"tanggal jam close: {payload.get('close_dt','')}\n"
             f"workzone: {payload.get('workzone','')}\n\n"
-            f"bobot/man-hours order: {payload.get('man_hours_order', 0):.2f}\n\n"
-            "Apakah data ini sudah benar?"
+            f"bobot/man-hours order: {payload.get('man_hours_order', 0):.2f}"
+            + baris_rupiah(payload)
+            + "\n\nApakah data ini sudah benar?"
         )
         await safe_edit_message(q, summary, reply_markup=confirm_keyboard(), parse_mode="Markdown")
         return
@@ -1313,8 +1737,9 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"- Start: {payload.get('start_dt','')}\n"
                 f"- Close: {payload.get('close_dt','')}\n"
                 f"- Workzone: {payload.get('workzone','')}\n\n"
-                f"- Bobot/MH Order: {payload.get('man_hours_order', 0):.2f}\n\n"
-                "Pilih aksi berikut untuk lanjut."
+                f"- Bobot/MH Order: {payload.get('man_hours_order', 0):.2f}"
+                + baris_rupiah(payload)
+                + "\n\nPilih aksi berikut untuk lanjut."
             )
 
         try:
@@ -1504,6 +1929,8 @@ def main():
     app.add_handler(CommandHandler("cancel", cancel_cmd))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("capaian", capaian_cmd))
+    app.add_handler(CommandHandler("pendapatan", pendapatan_cmd))
+    app.add_handler(CommandHandler("leaderboard", leaderboard_cmd))
     app.add_handler(CallbackQueryHandler(on_click))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_error_handler(on_error)
