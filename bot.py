@@ -927,7 +927,7 @@ TECH_UNITS = {
         {"name": "MOH WILDAN FIRDAUS", "labor": "18980509"},
         {"name": "YOGI SEPTIANDI", "labor": "19910031"},
         {"name": "WELLY MUSLIAN", "labor": "19950027"},
-        {"name": "RIZKY FAJAR DARMAWAN", "labor": "97160381"},
+        {"name": "RIZKY FAJAR DARMAWAN", "labor": "20970196"},
         {"name": "NUR FUAD S", "labor": "18990319"},
         # Pindah dari unit Assurance B2C ke Provisioning B2C (PSB), Sep 2026.
         {"name": "MAKARIUS SUMIARSO", "labor": "18740003"},
